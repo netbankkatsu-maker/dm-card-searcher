@@ -8,7 +8,77 @@ const PORT = process.env.PORT || 3000;
 app.use(express.static(path.join(__dirname, 'public')));
 app.use(express.json());
 
-// カード検索API - 公式サイトにPOSTで検索
+// キーワードの表記ゆれを補正（中黒あり/なし、スペースなど）
+function generateSearchVariants(keyword) {
+  const variants = [keyword];
+
+  // 中黒あり → 中黒なしも試す
+  if (keyword.includes('・')) {
+    variants.push(keyword.replace(/・/g, ''));
+  }
+
+  // 中黒なし → カタカナの切れ目に中黒を入れた全パターンを生成
+  if (!keyword.includes('・') && /^[ァ-ヶー]+$/.test(keyword) && keyword.length >= 4) {
+    // 全ての位置に中黒を入れたパターンを1つずつ試す
+    for (let i = 2; i < keyword.length - 1; i++) {
+      const withDot = keyword.slice(0, i) + '・' + keyword.slice(i);
+      variants.push(withDot);
+    }
+  }
+
+  // スペース → 中黒に変換
+  if (keyword.includes(' ') || keyword.includes('　')) {
+    variants.push(keyword.replace(/[\s　]+/g, '・'));
+    variants.push(keyword.replace(/[\s　]+/g, ''));
+  }
+
+  return [...new Set(variants)];
+}
+
+// 公式サイトにPOSTで検索を実行する共通関数
+async function searchCards(keyword) {
+  const params = new URLSearchParams();
+  params.append('keyword', keyword);
+  params.append('keyword_type[]', 'card_name');
+  params.append('keyword_type[]', 'card_ruby');
+  params.append('keyword_type[]', 'card_text');
+  params.append('samename', 'on');
+
+  const response = await fetch('https://dm.takaratomy.co.jp/card/', {
+    method: 'POST',
+    headers: {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+      'Content-Type': 'application/x-www-form-urlencoded',
+      'Accept': 'text/html,application/xhtml+xml',
+      'Accept-Language': 'ja,en;q=0.9',
+    },
+    body: params.toString(),
+  });
+
+  const html = await response.text();
+  const $ = cheerio.load(html);
+  const cards = [];
+
+  $('a[href*="/card/detail/?id="]').each((i, el) => {
+    const href = $(el).attr('href') || $(el).attr('data-href') || '';
+    const idMatch = href.match(/id=([^&'"]+)/);
+    if (idMatch) {
+      const id = idMatch[1];
+      const img = $(el).find('img');
+      let thumbUrl = img.attr('src') || img.attr('data-src') || '';
+      if (thumbUrl && !thumbUrl.startsWith('http')) {
+        thumbUrl = `https://dm.takaratomy.co.jp${thumbUrl}`;
+      }
+      if (!cards.find(c => c.id === id)) {
+        cards.push({ id, thumbnail: thumbUrl });
+      }
+    }
+  });
+
+  return cards;
+}
+
+// カード検索API
 app.get('/api/search', async (req, res) => {
   try {
     const keyword = req.query.keyword || '';
@@ -16,49 +86,14 @@ app.get('/api/search', async (req, res) => {
       return res.json({ cards: [] });
     }
 
-    // 公式サイトはPOSTで検索する仕組み
-    const params = new URLSearchParams();
-    params.append('keyword', keyword);
-    params.append('keyword_type[]', 'card_name');
-    params.append('keyword_type[]', 'card_ruby');
-    params.append('keyword_type[]', 'card_text');
-    params.append('samename', 'on');
+    // 表記ゆれを考慮して複数パターンで検索
+    const variants = generateSearchVariants(keyword.trim());
+    let cards = [];
 
-    const response = await fetch('https://dm.takaratomy.co.jp/card/', {
-      method: 'POST',
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-        'Content-Type': 'application/x-www-form-urlencoded',
-        'Accept': 'text/html,application/xhtml+xml',
-        'Accept-Language': 'ja,en;q=0.9',
-      },
-      body: params.toString(),
-    });
-
-    const html = await response.text();
-    const $ = cheerio.load(html);
-    const cards = [];
-
-    // カード一覧からリンクとサムネイルを抽出
-    $('a[href*="/card/detail/?id="]').each((i, el) => {
-      const href = $(el).attr('href') || $(el).attr('data-href') || '';
-      const idMatch = href.match(/id=([^&'"]+)/);
-      if (idMatch) {
-        const id = idMatch[1];
-        const img = $(el).find('img');
-        let thumbUrl = img.attr('src') || img.attr('data-src') || '';
-        if (thumbUrl && !thumbUrl.startsWith('http')) {
-          thumbUrl = `https://dm.takaratomy.co.jp${thumbUrl}`;
-        }
-        // 重複排除
-        if (!cards.find(c => c.id === id)) {
-          cards.push({
-            id,
-            thumbnail: thumbUrl,
-          });
-        }
-      }
-    });
+    for (const variant of variants) {
+      cards = await searchCards(variant);
+      if (cards.length > 0) break;
+    }
 
     res.json({ cards: cards.slice(0, 30) });
   } catch (error) {

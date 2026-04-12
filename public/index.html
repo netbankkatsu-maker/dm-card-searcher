@@ -215,8 +215,15 @@
       z-index: 200;
       display: none;
       flex-direction: column;
+      overflow: hidden;
     }
     .card-detail-overlay.visible { display: flex; }
+    #cardDetail {
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+      overflow: hidden;
+    }
 
     /* 詳細ヘッダー */
     .detail-header {
@@ -328,10 +335,12 @@
     .detail-body {
       flex: 1;
       overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
       padding: 16px;
       display: flex;
       flex-direction: column;
       gap: 12px;
+      min-height: 0;
     }
 
     /* カード属性（コンパクト横並び） */
@@ -732,7 +741,7 @@
         let html = '<div class="results-grid">';
         for (const c of data.cards) {
           const img = '/api/image?url=' + encodeURIComponent(c.thumbnail);
-          html += '<div class="result-card" onclick="showCardDetail(\'' + esc(c.id) + '\')"><img src="' + img + '" loading="lazy" onerror="this.style.display=\'none\'"><div class="result-card-name">' + esc(c.id) + '</div></div>';
+          html += '<div class="result-card" onclick="showCardDetail(\'' + esc(c.id) + '\')"><img src="' + img + '" loading="lazy" onerror="this.style.opacity=\'0.3\'"><div class="result-card-name">' + esc(c.id) + '</div></div>';
         }
         html += '</div>';
         area.innerHTML = html;

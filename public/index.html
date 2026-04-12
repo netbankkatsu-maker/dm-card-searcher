@@ -1,0 +1,1102 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>デュエマカード検索くん</title>
+  <style>
+    :root {
+      --bg-primary: #0a0a1a;
+      --bg-secondary: #12122a;
+      --bg-card: #1a1a3a;
+      --bg-hover: #252550;
+      --text-primary: #e8e8ff;
+      --text-secondary: #9999cc;
+      --accent-fire: #ff4444;
+      --accent-water: #4488ff;
+      --accent-nature: #44cc44;
+      --accent-light: #ffcc00;
+      --accent-darkness: #9944cc;
+      --accent-zero: #888888;
+      --border-color: #333366;
+      --glow-color: rgba(68, 136, 255, 0.3);
+      --font-size-effect: 1.3rem;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: 'Segoe UI', 'Meiryo', 'Yu Gothic', sans-serif;
+      background: var(--bg-primary);
+      color: var(--text-primary);
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    /* ヘッダー */
+    .header {
+      background: linear-gradient(135deg, var(--bg-secondary), var(--bg-card));
+      border-bottom: 2px solid var(--border-color);
+      padding: 10px 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+
+    .header h1 {
+      font-size: 1.1rem;
+      background: linear-gradient(90deg, var(--accent-fire), var(--accent-water), var(--accent-nature), var(--accent-light), var(--accent-darkness));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .header-buttons { display: flex; gap: 6px; }
+
+    .header-btn {
+      background: var(--bg-hover);
+      border: 1px solid var(--border-color);
+      color: var(--text-secondary);
+      padding: 6px 10px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 0.85rem;
+      transition: all 0.2s;
+    }
+    .header-btn:hover { background: var(--border-color); color: var(--text-primary); }
+    .header-btn.active { background: var(--accent-water); color: white; border-color: var(--accent-water); }
+
+    /* 検索エリア */
+    .search-area {
+      padding: 12px 16px;
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      max-width: 700px;
+      margin: 0 auto;
+    }
+
+    .search-input {
+      flex: 1;
+      padding: 12px 16px;
+      font-size: 1rem;
+      background: var(--bg-card);
+      border: 2px solid var(--border-color);
+      border-radius: 10px;
+      color: var(--text-primary);
+      outline: none;
+      transition: border-color 0.3s;
+    }
+    .search-input:focus { border-color: var(--accent-water); box-shadow: 0 0 15px var(--glow-color); }
+    .search-input::placeholder { color: var(--text-secondary); }
+
+    .icon-btn {
+      width: 48px;
+      height: 48px;
+      border-radius: 50%;
+      border: 2px solid var(--border-color);
+      background: var(--bg-card);
+      color: var(--text-secondary);
+      font-size: 1.3rem;
+      cursor: pointer;
+      transition: all 0.3s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+    .icon-btn:hover { background: var(--bg-hover); color: var(--text-primary); }
+    .voice-btn { border-color: var(--accent-fire); color: var(--accent-fire); }
+    .voice-btn:hover { background: var(--accent-fire); color: white; box-shadow: 0 0 15px rgba(255,68,68,0.4); }
+    .voice-btn.listening { background: var(--accent-fire); color: white; animation: pulse 1s infinite; }
+    .search-btn-icon { border-color: var(--accent-water); color: var(--accent-water); }
+    .search-btn-icon:hover { background: var(--accent-water); color: white; }
+
+    @keyframes pulse {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(255,68,68,0.5); }
+      50% { box-shadow: 0 0 0 12px rgba(255,68,68,0); }
+    }
+
+    .voice-status {
+      text-align: center;
+      padding: 0 16px 6px;
+      font-size: 0.85rem;
+      color: var(--accent-fire);
+      min-height: 20px;
+    }
+
+    /* メインコンテンツ */
+    .main-content {
+      display: flex;
+      height: calc(100vh - 130px);
+      overflow: hidden;
+    }
+
+    /* サイドパネル */
+    .side-panel {
+      width: 240px;
+      background: var(--bg-secondary);
+      border-right: 1px solid var(--border-color);
+      overflow-y: auto;
+      transition: width 0.3s;
+      flex-shrink: 0;
+    }
+    .side-panel.hidden { width: 0; overflow: hidden; }
+
+    .side-panel-tabs {
+      display: flex;
+      border-bottom: 1px solid var(--border-color);
+    }
+    .side-tab {
+      flex: 1;
+      padding: 8px;
+      background: transparent;
+      border: none;
+      color: var(--text-secondary);
+      cursor: pointer;
+      font-size: 0.8rem;
+      border-bottom: 2px solid transparent;
+    }
+    .side-tab.active { color: var(--accent-water); border-bottom-color: var(--accent-water); }
+
+    .side-list { padding: 6px; }
+    .side-item {
+      padding: 8px 10px;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: background 0.2s;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-bottom: 2px;
+      font-size: 0.85rem;
+    }
+    .side-item:hover { background: var(--bg-hover); }
+    .side-item .remove-btn {
+      margin-left: auto;
+      background: none;
+      border: none;
+      color: var(--text-secondary);
+      cursor: pointer;
+      opacity: 0;
+    }
+    .side-item:hover .remove-btn { opacity: 1; }
+    .side-empty { padding: 16px; text-align: center; color: var(--text-secondary); font-size: 0.8rem; }
+
+    /* 結果エリア */
+    .results-area { flex: 1; overflow-y: auto; padding: 12px; }
+
+    .results-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+      gap: 8px;
+    }
+    .result-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      overflow: hidden;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .result-card:hover { transform: translateY(-3px); box-shadow: 0 6px 20px rgba(0,0,0,0.4); border-color: var(--accent-water); }
+    .result-card img { width: 100%; aspect-ratio: 0.715; object-fit: cover; display: block; }
+    .result-card-name { padding: 6px; font-size: 0.7rem; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+    /* ===== カード詳細（全画面 説明文メイン） ===== */
+    .card-detail-overlay {
+      position: fixed;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      background: var(--bg-primary);
+      z-index: 200;
+      display: none;
+      flex-direction: column;
+    }
+    .card-detail-overlay.visible { display: flex; }
+
+    /* 詳細ヘッダー */
+    .detail-header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 10px 16px;
+      background: var(--bg-secondary);
+      border-bottom: 2px solid var(--border-color);
+      flex-shrink: 0;
+    }
+
+    .detail-close-btn {
+      width: 36px; height: 36px;
+      border-radius: 50%;
+      border: none;
+      background: var(--bg-card);
+      color: var(--text-primary);
+      font-size: 1.3rem;
+      cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+    }
+    .detail-close-btn:hover { background: var(--accent-fire); }
+
+    .detail-card-thumb {
+      width: 50px; height: 70px;
+      border-radius: 4px;
+      object-fit: cover;
+      flex-shrink: 0;
+      cursor: pointer;
+      border: 1px solid var(--border-color);
+    }
+    .detail-card-thumb:hover { border-color: var(--accent-water); box-shadow: 0 0 10px var(--glow-color); }
+
+    .detail-header-info { flex: 1; min-width: 0; }
+    .detail-card-name {
+      font-size: 1.2rem;
+      font-weight: bold;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .detail-card-meta {
+      font-size: 0.8rem;
+      color: var(--text-secondary);
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 2px;
+    }
+
+    .detail-header-actions { display: flex; gap: 6px; flex-shrink: 0; }
+
+    .action-btn {
+      padding: 6px 12px;
+      border-radius: 6px;
+      border: 1px solid var(--border-color);
+      background: var(--bg-card);
+      color: var(--text-secondary);
+      cursor: pointer;
+      font-size: 0.8rem;
+      transition: all 0.2s;
+      white-space: nowrap;
+    }
+    .action-btn:hover { background: var(--bg-hover); color: var(--text-primary); }
+    .action-btn.favorited { background: var(--accent-light); color: #000; border-color: var(--accent-light); }
+
+    /* 文字サイズコントロール */
+    .font-size-control {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .font-size-btn {
+      width: 32px; height: 32px;
+      border-radius: 6px;
+      border: 1px solid var(--border-color);
+      background: var(--bg-card);
+      color: var(--text-primary);
+      font-size: 1.1rem;
+      cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .font-size-btn:hover { background: var(--accent-water); }
+    .font-size-label {
+      font-size: 0.7rem;
+      color: var(--text-secondary);
+      min-width: 30px;
+      text-align: center;
+    }
+
+    /* 文明バッジ */
+    .civilization-badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 12px;
+      font-size: 0.75rem;
+      font-weight: bold;
+    }
+    .civ-fire { background: var(--accent-fire); color: white; }
+    .civ-water { background: var(--accent-water); color: white; }
+    .civ-nature { background: var(--accent-nature); color: white; }
+    .civ-light { background: var(--accent-light); color: #000; }
+    .civ-darkness { background: var(--accent-darkness); color: white; }
+    .civ-zero { background: var(--accent-zero); color: white; }
+
+    /* 詳細メインエリア：効果テキストがメイン */
+    .detail-body {
+      flex: 1;
+      overflow-y: auto;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    /* カード属性（コンパクト横並び） */
+    .card-attrs-compact {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .attr-chip {
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      padding: 6px 12px;
+      font-size: 0.85rem;
+    }
+    .attr-chip-label { color: var(--text-secondary); font-size: 0.7rem; }
+    .attr-chip-value { font-weight: bold; }
+
+    /* 効果テキスト（メインコンテンツ） */
+    .effects-area {
+      flex: 1;
+    }
+    .effects-title {
+      font-size: 0.9rem;
+      color: var(--accent-water);
+      margin-bottom: 10px;
+      font-weight: bold;
+    }
+    .effect-item {
+      background: var(--bg-card);
+      padding: 16px 20px;
+      border-radius: 10px;
+      border-left: 5px solid var(--accent-water);
+      margin-bottom: 10px;
+      font-size: var(--font-size-effect);
+      line-height: 1.8;
+      white-space: pre-wrap;
+    }
+
+    /* キーワードハイライト */
+    .keyword-highlight {
+      color: var(--accent-light);
+      cursor: help;
+      border-bottom: 2px dashed var(--accent-light);
+    }
+
+    /* キーワード解説 */
+    .keyword-tooltip {
+      position: fixed;
+      background: var(--bg-card);
+      border: 2px solid var(--accent-light);
+      border-radius: 12px;
+      padding: 16px 20px;
+      max-width: 420px;
+      z-index: 300;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.6);
+      font-size: 1rem;
+      line-height: 1.6;
+      display: none;
+    }
+    .keyword-tooltip.visible { display: block; }
+    .keyword-tooltip-title { font-weight: bold; color: var(--accent-light); margin-bottom: 6px; font-size: 1.1rem; }
+
+    /* 画像拡大ポップアップ */
+    .image-popup {
+      position: fixed;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      background: rgba(0,0,0,0.9);
+      z-index: 300;
+      display: none;
+      justify-content: center;
+      align-items: center;
+      cursor: pointer;
+    }
+    .image-popup.visible { display: flex; }
+    .image-popup img {
+      max-width: 90%;
+      max-height: 90%;
+      border-radius: 12px;
+      box-shadow: 0 8px 40px rgba(0,0,0,0.5);
+    }
+
+    /* ローディング */
+    .loading { display: flex; justify-content: center; align-items: center; padding: 40px; flex-direction: column; gap: 12px; }
+    .loading-spinner {
+      width: 40px; height: 40px;
+      border: 3px solid var(--border-color);
+      border-top-color: var(--accent-water);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .loading-text { color: var(--text-secondary); font-size: 0.9rem; }
+
+    /* 初期画面 */
+    .welcome-screen { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; text-align: center; padding: 30px; }
+    .welcome-icon { font-size: 3rem; margin-bottom: 16px; }
+    .welcome-title { font-size: 1.5rem; margin-bottom: 8px; background: linear-gradient(90deg, var(--accent-fire), var(--accent-water)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+    .welcome-desc { color: var(--text-secondary); font-size: 0.9rem; max-width: 400px; line-height: 1.5; }
+    .welcome-tips { margin-top: 20px; display: flex; gap: 12px; flex-wrap: wrap; justify-content: center; }
+    .welcome-tip { background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 8px; padding: 12px; max-width: 160px; text-align: left; }
+    .welcome-tip-icon { font-size: 1.3rem; margin-bottom: 4px; }
+    .welcome-tip-title { font-size: 0.8rem; font-weight: bold; margin-bottom: 2px; }
+    .welcome-tip-desc { font-size: 0.7rem; color: var(--text-secondary); }
+
+    /* スクロールバー */
+    ::-webkit-scrollbar { width: 8px; }
+    ::-webkit-scrollbar-track { background: var(--bg-primary); }
+    ::-webkit-scrollbar-thumb { background: var(--border-color); border-radius: 4px; }
+
+    /* デッキ一覧 */
+    .deck-list { display: flex; flex-direction: column; gap: 8px; }
+    .deck-item {
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: 10px;
+      padding: 14px 18px;
+      cursor: pointer;
+      transition: all 0.2s;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .deck-item:hover { border-color: var(--accent-water); transform: translateX(4px); }
+    .deck-item-icon { font-size: 1.5rem; flex-shrink: 0; }
+    .deck-item-info { flex: 1; min-width: 0; }
+    .deck-item-name { font-weight: bold; font-size: 1rem; }
+    .deck-item-meta { font-size: 0.75rem; color: var(--text-secondary); margin-top: 2px; }
+    .deck-item-arrow { color: var(--text-secondary); font-size: 1.2rem; }
+
+    /* デッキカード一覧 */
+    .deck-header { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+    .deck-back-btn {
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      color: var(--text-primary);
+      padding: 6px 12px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 0.85rem;
+    }
+    .deck-back-btn:hover { background: var(--bg-hover); }
+    .deck-title { font-size: 1.1rem; font-weight: bold; }
+    .deck-card-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 8px;
+    }
+    .deck-card-item {
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      padding: 10px 14px;
+      cursor: pointer;
+      transition: all 0.2s;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .deck-card-item:hover { border-color: var(--accent-water); background: var(--bg-hover); }
+    .deck-card-thumb { width: 40px; height: 56px; border-radius: 4px; object-fit: cover; flex-shrink: 0; }
+    .deck-card-info { flex: 1; min-width: 0; }
+    .deck-card-name { font-size: 0.9rem; font-weight: bold; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .deck-card-meta { font-size: 0.7rem; color: var(--text-secondary); }
+    .deck-loading-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      padding: 16px;
+      text-align: center;
+      color: var(--text-secondary);
+      font-size: 0.8rem;
+    }
+
+    /* レスポンシブ */
+    @media (max-width: 600px) {
+      .side-panel { position: fixed; top: 0; left: 0; height: 100%; z-index: 150; width: 240px; }
+      .side-panel.hidden { width: 0; }
+      .detail-header { flex-wrap: wrap; }
+      .detail-header-actions { width: 100%; justify-content: flex-end; }
+      .results-grid { grid-template-columns: repeat(auto-fill, minmax(90px, 1fr)); }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ヘッダー -->
+  <div class="header">
+    <h1>デュエマカード検索くん</h1>
+    <div class="header-buttons">
+      <button class="header-btn" id="tabSearch" onclick="switchMainTab('search')" style="background:var(--accent-water);color:white;border-color:var(--accent-water)">&#128269; カード検索</button>
+      <button class="header-btn" id="tabDeck" onclick="switchMainTab('deck')">&#127183; デッキレシピ</button>
+      <button class="header-btn" onclick="document.getElementById('sidePanel').classList.toggle('hidden')">&#9776;</button>
+    </div>
+  </div>
+
+  <!-- カード検索タブ -->
+  <div id="searchTab">
+    <div class="search-area">
+      <button class="icon-btn voice-btn" id="voiceBtn" onclick="toggleVoice()" title="音声で検索">&#127908;</button>
+      <input type="text" class="search-input" id="searchInput" placeholder="カード名を入力 or マイクボタンで音声検索..."
+             onkeydown="if(event.key==='Enter'){doSearch();}">
+      <button class="icon-btn search-btn-icon" onclick="doSearch()" title="検索">&#128269;</button>
+    </div>
+    <div class="voice-status" id="voiceStatus"></div>
+  </div>
+
+  <!-- デッキレシピタブ -->
+  <div id="deckTab" style="display:none;">
+    <div style="padding:8px 16px;text-align:center;font-size:0.85rem;color:var(--text-secondary);">構築済みデッキ製品のカードリストを閲覧できます</div>
+  </div>
+
+  <!-- メインコンテンツ -->
+  <div class="main-content">
+    <div class="side-panel hidden" id="sidePanel">
+      <div class="side-panel-tabs">
+        <button class="side-tab active" data-tab="history" onclick="switchTab('history', this)">&#128339; 履歴</button>
+        <button class="side-tab" data-tab="favorites" onclick="switchTab('favorites', this)">&#11088; お気に入り</button>
+      </div>
+      <div class="side-list" id="sideList"></div>
+    </div>
+
+    <div class="results-area" id="resultsArea">
+      <div class="welcome-screen" id="welcomeScreen">
+        <div class="welcome-icon">&#127183;</div>
+        <div class="welcome-title">デュエマカード検索くん</div>
+        <div class="welcome-desc">音声認識またはテキスト入力でカードを検索。効果テキストを大きく表示します。</div>
+        <div class="welcome-tips">
+          <div class="welcome-tip">
+            <div class="welcome-tip-icon">&#127908;</div>
+            <div class="welcome-tip-title">音声検索</div>
+            <div class="welcome-tip-desc">マイクボタンを押してカード名を話す</div>
+          </div>
+          <div class="welcome-tip">
+            <div class="welcome-tip-icon">&#127183;</div>
+            <div class="welcome-tip-title">デッキレシピ</div>
+            <div class="welcome-tip-desc">構築済みデッキの中身を確認</div>
+          </div>
+          <div class="welcome-tip">
+            <div class="welcome-tip-icon">&#128218;</div>
+            <div class="welcome-tip-title">キーワード解説</div>
+            <div class="welcome-tip-desc">黄色いキーワードで説明表示</div>
+          </div>
+          <div class="welcome-tip">
+            <div class="welcome-tip-icon">&#128300;</div>
+            <div class="welcome-tip-title">文字サイズ変更</div>
+            <div class="welcome-tip-desc">A+/A- で文字の大きさ調整</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- カード詳細オーバーレイ（全画面・説明文メイン） -->
+  <div class="card-detail-overlay" id="cardDetailOverlay">
+    <div id="cardDetail"></div>
+  </div>
+
+  <!-- 画像拡大ポップアップ -->
+  <div class="image-popup" id="imagePopup" onclick="this.classList.remove('visible')">
+    <img id="popupImage" src="" alt="">
+  </div>
+
+  <!-- キーワード解説ツールチップ -->
+  <div class="keyword-tooltip" id="keywordTooltip">
+    <div class="keyword-tooltip-title" id="tooltipTitle"></div>
+    <div class="keyword-tooltip-desc" id="tooltipDesc"></div>
+  </div>
+
+  <script>
+    // ========================================
+    // デュエマキーワード能力辞典
+    // ========================================
+    const KEYWORDS = {
+      'スピードアタッカー': 'このクリーチャーはバトルゾーンに出たターンにすぐ攻撃できます。通常は出したターンは攻撃できません（召喚酔い）が、この能力があれば即攻撃可能です。',
+      'ブロッカー': '相手クリーチャーが攻撃してきた時、このクリーチャーをタップして攻撃をブロック（防御）できます。ブロックすると攻撃クリーチャーとバトルします。',
+      'W・ブレイカー': 'ダブル・ブレイカー。攻撃時にシールドを2枚同時にブレイクします。',
+      'T・ブレイカー': 'トリプル・ブレイカー。シールドを3枚同時にブレイクします。',
+      'Q・ブレイカー': 'クワトロ・ブレイカー。シールドを4枚同時にブレイクします。',
+      'ワールド・ブレイカー': '攻撃時に相手のシールドを全てブレイクします。',
+      'パワード・ブレイカー': 'パワー6000ごとにシールドを1枚多くブレイクします。',
+      'マッハファイター': '出たターンに相手クリーチャーを攻撃できます（プレイヤー攻撃は不可）。',
+      'シールド・トリガー': 'シールドからブレイクされて手札に加わる時、コストを支払わずに使えます。防御の要です。',
+      'S・トリガー': 'シールド・トリガーの略。シールドから出た時、無料で使える能力です。',
+      '侵略': '指定クリーチャーが攻撃する時、手札からコスト無しでその上に進化できます。',
+      '革命チェンジ': '指定クリーチャーが攻撃する時、手札に戻して代わりにコスト無しで出せます。',
+      'G・ストライク': 'シールドから手札に加わる時、相手クリーチャー1体をそのターン攻撃もブロックも不可にします。',
+      'EXライフ': '出る時に山札の上から1枚をシールド化。そのシールドがなくなると破壊されます。',
+      'ジャストダイバー': '出た次の自分のターンのはじめまで、相手に選ばれず攻撃もされません。',
+      'スレイヤー': 'バトルで負けても、バトルした相手クリーチャーを道連れに破壊します。',
+      'アンブロッカブル': 'このクリーチャーはブロックされません。',
+      'アンタッチャブル': 'このクリーチャーは相手に選ばれません。',
+      'エスケープ': '破壊される時、墓地からカード2枚を山札の下に置くことで破壊を免れます。',
+      'マナ武装': '指定文明のカードがマナゾーンに指定数以上あると効果が発動します。',
+      'ニンジャ・ストライク': '相手が攻撃/ブロックした時、手札から条件を満たせばコスト無しで出せます。',
+      'ガードマン': '味方クリーチャーが攻撃される時、代わりにこのクリーチャーがブロックします。',
+      'シンパシー': '自分のバトルゾーンの特定種族の数だけコストが軽くなります。',
+      'ハイパー化': '自分の他のクリーチャーを1体破壊して、ハイパーモードになり追加能力を得ます。',
+      'S・バック': 'シールドがブレイクされた時、手札からコスト無しで使えます。',
+      'タップイン': 'バトルゾーンにタップ状態で出ます。出したターンは攻撃できません。',
+      'マジボンバー': '攻撃時に山札の上から指定枚数を見て、指定コスト以下のカードを出せます。',
+      '鬼タイム': '自分と相手のシールド合計が6枚以下なら発動する能力です。',
+      'ササゲール': '進化元にすると進化クリーチャーのコストが軽くなります。',
+      'メタモーフ': 'マナゾーンのカードが7枚以上あると追加効果が発動します。',
+    };
+
+    // 文明マッピング
+    const CIV_MAP = {
+      '火': { cls: 'civ-fire', icon: '&#128293;' },
+      '水': { cls: 'civ-water', icon: '&#128167;' },
+      '自然': { cls: 'civ-nature', icon: '&#127807;' },
+      '光': { cls: 'civ-light', icon: '&#9728;&#65039;' },
+      '闇': { cls: 'civ-darkness', icon: '&#127761;' },
+      'ゼロ': { cls: 'civ-zero', icon: '&#9898;' },
+      '無色': { cls: 'civ-zero', icon: '&#9898;' },
+    };
+
+    // 状態
+    let currentTab = 'history';
+    let searchHistory = JSON.parse(localStorage.getItem('dm_search_history') || '[]');
+    let favorites = JSON.parse(localStorage.getItem('dm_favorites') || '[]');
+    let isListening = false;
+    let recognition = null;
+    let effectFontSize = parseFloat(localStorage.getItem('dm_font_size') || '1.3');
+
+    // ========================================
+    // 音声認識
+    // ========================================
+    function initSpeechRecognition() {
+      const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+      if (!SR) {
+        document.getElementById('voiceStatus').textContent = '※ このブラウザは音声認識に対応していません';
+        return;
+      }
+      recognition = new SR();
+      recognition.lang = 'ja-JP';
+      recognition.continuous = false;
+      recognition.interimResults = true;
+      recognition.maxAlternatives = 3;
+
+      recognition.onstart = () => {
+        isListening = true;
+        document.getElementById('voiceBtn').classList.add('listening');
+        document.getElementById('voiceStatus').innerHTML = '&#127908; 聞いています... カード名を話してください';
+      };
+      recognition.onresult = (event) => {
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+          const t = event.results[i][0].transcript;
+          document.getElementById('searchInput').value = t;
+          if (event.results[i].isFinal) {
+            document.getElementById('voiceStatus').textContent = '認識結果: "' + t + '"';
+            performSearch(t);
+          } else {
+            document.getElementById('voiceStatus').textContent = '認識中: "' + t + '"';
+          }
+        }
+      };
+      recognition.onerror = (event) => {
+        isListening = false;
+        document.getElementById('voiceBtn').classList.remove('listening');
+        const msgs = { 'no-speech': '音声が検出されませんでした', 'not-allowed': 'マイクの使用が許可されていません' };
+        document.getElementById('voiceStatus').textContent = msgs[event.error] || ('エラー: ' + event.error);
+      };
+      recognition.onend = () => {
+        isListening = false;
+        document.getElementById('voiceBtn').classList.remove('listening');
+      };
+    }
+
+    function toggleVoice() {
+      if (!recognition) return;
+      isListening ? recognition.stop() : recognition.start();
+    }
+
+    function doSearch() {
+      const v = document.getElementById('searchInput').value.trim();
+      if (v) performSearch(v);
+    }
+
+    // ========================================
+    // 検索
+    // ========================================
+    async function performSearch(keyword) {
+      if (!keyword.trim()) return;
+      document.getElementById('welcomeScreen')?.remove();
+      const area = document.getElementById('resultsArea');
+      area.innerHTML = '<div class="loading"><div class="loading-spinner"></div><div class="loading-text">「' + esc(keyword) + '」を検索中...</div></div>';
+
+      try {
+        const resp = await fetch('/api/search?keyword=' + encodeURIComponent(keyword));
+        const data = await resp.json();
+        if (data.error) { area.innerHTML = '<div class="loading"><div class="loading-text">&#9888; ' + esc(data.error) + '</div></div>'; return; }
+        if (data.cards.length === 0) { area.innerHTML = '<div class="loading"><div class="loading-text">「' + esc(keyword) + '」に一致するカードが見つかりませんでした</div></div>'; return; }
+
+        if (data.cards.length === 1) { showCardDetail(data.cards[0].id); area.innerHTML = ''; addToHistory(keyword); return; }
+
+        let html = '<div class="results-grid">';
+        for (const c of data.cards) {
+          const img = '/api/image?url=' + encodeURIComponent(c.thumbnail);
+          html += '<div class="result-card" onclick="showCardDetail(\'' + esc(c.id) + '\')"><img src="' + img + '" loading="lazy" onerror="this.style.display=\'none\'"><div class="result-card-name">' + esc(c.id) + '</div></div>';
+        }
+        html += '</div>';
+        area.innerHTML = html;
+        addToHistory(keyword);
+      } catch (e) {
+        area.innerHTML = '<div class="loading"><div class="loading-text">&#9888; 検索エラー</div></div>';
+      }
+    }
+
+    // ========================================
+    // カード詳細（説明文メイン・文字サイズ変更対応）
+    // ========================================
+    async function showCardDetail(cardId) {
+      const overlay = document.getElementById('cardDetailOverlay');
+      const detail = document.getElementById('cardDetail');
+      overlay.classList.add('visible');
+      detail.innerHTML = '<div class="loading" style="height:100vh;"><div class="loading-spinner"></div><div class="loading-text">読み込み中...</div></div>';
+
+      try {
+        const resp = await fetch('/api/card/' + encodeURIComponent(cardId));
+        const card = await resp.json();
+        if (card.error) { detail.innerHTML = '<div class="loading" style="height:100vh;"><div class="loading-text">&#9888; ' + esc(card.error) + '</div></div>'; return; }
+
+        const isFav = favorites.some(f => f.id === cardId);
+        const imgUrl = card.imageUrl ? '/api/image?url=' + encodeURIComponent(card.imageUrl) : '';
+        const civBadges = (card.civilization || '').split(/[\/／・]/).map(c => c.trim()).filter(Boolean).map(c => {
+          const m = CIV_MAP[c] || { cls: 'civ-zero', icon: '' };
+          return '<span class="civilization-badge ' + m.cls + '">' + m.icon + ' ' + esc(c) + '</span>';
+        }).join(' ');
+
+        const effectsHtml = card.effects.map(e =>
+          '<div class="effect-item">' + highlightKeywords(esc(e)) + '</div>'
+        ).join('');
+
+        // 属性チップ
+        const attrs = [];
+        if (card.cardType) attrs.push({ l: '種類', v: card.cardType });
+        if (card.cost) attrs.push({ l: 'コスト', v: card.cost });
+        if (card.mana) attrs.push({ l: 'マナ', v: card.mana });
+        if (card.power) attrs.push({ l: 'パワー', v: card.power });
+        if (card.race) attrs.push({ l: '種族', v: card.race });
+        if (card.rarity) attrs.push({ l: 'レアリティ', v: card.rarity });
+        const attrHtml = attrs.map(a => '<div class="attr-chip"><div class="attr-chip-label">' + a.l + '</div><div class="attr-chip-value">' + esc(a.v) + '</div></div>').join('');
+
+        detail.innerHTML = `
+          <div class="detail-header">
+            <button class="detail-close-btn" onclick="closeDetail()">&times;</button>
+            ${imgUrl ? '<img class="detail-card-thumb" src="' + imgUrl + '" onclick="showImagePopup(\'' + imgUrl + '\')" title="クリックで拡大">' : ''}
+            <div class="detail-header-info">
+              <div class="detail-card-name">${esc(card.name)}</div>
+              <div class="detail-card-meta">${civBadges}</div>
+            </div>
+            <div class="detail-header-actions">
+              <button class="action-btn ${isFav ? 'favorited' : ''}" onclick="toggleFavorite('${esc(cardId)}','${esc(card.name)}',this)">
+                ${isFav ? '&#11088;' : '&#9734;'}
+              </button>
+              <button class="action-btn" onclick="readAloud()" title="読み上げ">&#128264;</button>
+              <div class="font-size-control">
+                <button class="font-size-btn" onclick="changeFontSize(-0.15)" title="文字を小さく">A-</button>
+                <span class="font-size-label" id="fontSizeLabel">${Math.round(effectFontSize * 100)}%</span>
+                <button class="font-size-btn" onclick="changeFontSize(0.15)" title="文字を大きく">A+</button>
+              </div>
+            </div>
+          </div>
+          <div class="detail-body" id="detailBody">
+            <div class="card-attrs-compact">${attrHtml}</div>
+            <div class="effects-area" id="effectsArea">
+              <div class="effects-title">&#9889; カード効果</div>
+              ${card.effects.length > 0 ? effectsHtml : '<div class="effect-item" style="color:var(--text-secondary)">効果テキストが見つかりませんでした</div>'}
+            </div>
+          </div>
+        `;
+
+        applyFontSize();
+        addToHistory(card.name || cardId, cardId);
+      } catch (e) {
+        detail.innerHTML = '<div class="loading" style="height:100vh;"><div class="loading-text">&#9888; 読み込み失敗</div></div>';
+      }
+    }
+
+    function closeDetail() {
+      document.getElementById('cardDetailOverlay').classList.remove('visible');
+      window.speechSynthesis.cancel();
+    }
+
+    function showImagePopup(url) {
+      document.getElementById('popupImage').src = url;
+      document.getElementById('imagePopup').classList.add('visible');
+    }
+
+    // ========================================
+    // 文字サイズ変更
+    // ========================================
+    function changeFontSize(delta) {
+      effectFontSize = Math.max(0.8, Math.min(3.0, effectFontSize + delta));
+      localStorage.setItem('dm_font_size', effectFontSize.toString());
+      applyFontSize();
+    }
+
+    function applyFontSize() {
+      const items = document.querySelectorAll('.effect-item');
+      items.forEach(el => { el.style.fontSize = effectFontSize + 'rem'; });
+      const label = document.getElementById('fontSizeLabel');
+      if (label) label.textContent = Math.round(effectFontSize * 100) + '%';
+    }
+
+    // ========================================
+    // 読み上げ
+    // ========================================
+    function readAloud() {
+      if (window.speechSynthesis.speaking) { window.speechSynthesis.cancel(); return; }
+      const body = document.getElementById('detailBody');
+      if (!body) return;
+      const name = document.querySelector('.detail-card-name')?.textContent || '';
+      const effects = [...body.querySelectorAll('.effect-item')].map(el => el.textContent).join('。');
+      let text = name;
+      body.querySelectorAll('.attr-chip').forEach(chip => {
+        const l = chip.querySelector('.attr-chip-label')?.textContent || '';
+        const v = chip.querySelector('.attr-chip-value')?.textContent || '';
+        text += '。' + l + '、' + v;
+      });
+      if (effects) text += '。効果。' + effects;
+      const u = new SpeechSynthesisUtterance(text);
+      u.lang = 'ja-JP';
+      u.rate = 0.9;
+      window.speechSynthesis.speak(u);
+    }
+
+    // ========================================
+    // キーワードハイライト
+    // ========================================
+    function highlightKeywords(text) {
+      const sorted = Object.keys(KEYWORDS).sort((a, b) => b.length - a.length);
+      for (const kw of sorted) {
+        const escaped = kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        text = text.replace(new RegExp('(' + escaped + ')', 'g'),
+          '<span class="keyword-highlight" onclick="showKeywordTooltip(event,\'' + kw.replace(/'/g, "\\'") + '\')">$1</span>');
+      }
+      return text;
+    }
+
+    function showKeywordTooltip(event, keyword) {
+      event.stopPropagation();
+      const desc = KEYWORDS[keyword];
+      if (!desc) return;
+      const tip = document.getElementById('keywordTooltip');
+      document.getElementById('tooltipTitle').textContent = keyword;
+      document.getElementById('tooltipDesc').textContent = desc;
+      tip.classList.add('visible');
+      const r = event.target.getBoundingClientRect();
+      let top = r.bottom + 8, left = r.left;
+      if (left + 400 > window.innerWidth) left = window.innerWidth - 430;
+      if (top + 200 > window.innerHeight) top = r.top - 200;
+      tip.style.top = Math.max(10, top) + 'px';
+      tip.style.left = Math.max(10, left) + 'px';
+    }
+
+    // ========================================
+    // 履歴・お気に入り
+    // ========================================
+    function addToHistory(keyword, cardId) {
+      searchHistory = searchHistory.filter(h => h.keyword !== keyword);
+      searchHistory.unshift({ keyword, cardId: cardId || null, timestamp: Date.now() });
+      searchHistory = searchHistory.slice(0, 50);
+      localStorage.setItem('dm_search_history', JSON.stringify(searchHistory));
+      if (currentTab === 'history') renderSideList();
+    }
+
+    function toggleFavorite(cardId, name, btn) {
+      const idx = favorites.findIndex(f => f.id === cardId);
+      if (idx >= 0) {
+        favorites.splice(idx, 1);
+        if (btn) { btn.classList.remove('favorited'); btn.innerHTML = '&#9734;'; }
+      } else {
+        favorites.unshift({ id: cardId, name, timestamp: Date.now() });
+        if (btn) { btn.classList.add('favorited'); btn.innerHTML = '&#11088;'; }
+      }
+      localStorage.setItem('dm_favorites', JSON.stringify(favorites));
+      if (currentTab === 'favorites') renderSideList();
+    }
+
+    function switchTab(tab, el) {
+      currentTab = tab;
+      document.querySelectorAll('.side-tab').forEach(t => t.classList.remove('active'));
+      el.classList.add('active');
+      renderSideList();
+    }
+
+    function renderSideList() {
+      const list = document.getElementById('sideList');
+      const items = currentTab === 'history' ? searchHistory : favorites;
+      if (!items.length) { list.innerHTML = '<div class="side-empty">' + (currentTab === 'history' ? '検索履歴はまだありません' : 'お気に入りはまだありません') + '</div>'; return; }
+      list.innerHTML = items.map((item, i) => {
+        const name = item.keyword || item.name || item.id || '不明';
+        const action = item.cardId || item.id ? "showCardDetail('" + esc(item.cardId || item.id) + "')" : "performSearch('" + esc(item.keyword) + "')";
+        return '<div class="side-item" onclick="' + action + '"><span>' + (currentTab === 'history' ? '&#128339;' : '&#11088;') + '</span><span>' + esc(name) + '</span><button class="remove-btn" onclick="event.stopPropagation();removeSideItem(' + i + ')">&times;</button></div>';
+      }).join('');
+    }
+
+    function removeSideItem(i) {
+      if (currentTab === 'history') { searchHistory.splice(i, 1); localStorage.setItem('dm_search_history', JSON.stringify(searchHistory)); }
+      else { favorites.splice(i, 1); localStorage.setItem('dm_favorites', JSON.stringify(favorites)); }
+      renderSideList();
+    }
+
+    // ========================================
+    // ユーティリティ
+    // ========================================
+    function esc(t) { if (!t) return ''; const d = document.createElement('div'); d.textContent = t; return d.innerHTML; }
+
+    // ========================================
+    // メインタブ切り替え
+    // ========================================
+    let currentMainTab = 'search';
+
+    function switchMainTab(tab) {
+      currentMainTab = tab;
+      document.getElementById('searchTab').style.display = tab === 'search' ? '' : 'none';
+      document.getElementById('deckTab').style.display = tab === 'deck' ? '' : 'none';
+      document.getElementById('tabSearch').style.background = tab === 'search' ? 'var(--accent-water)' : '';
+      document.getElementById('tabSearch').style.color = tab === 'search' ? 'white' : '';
+      document.getElementById('tabSearch').style.borderColor = tab === 'search' ? 'var(--accent-water)' : '';
+      document.getElementById('tabDeck').style.background = tab === 'deck' ? 'var(--accent-water)' : '';
+      document.getElementById('tabDeck').style.color = tab === 'deck' ? 'white' : '';
+      document.getElementById('tabDeck').style.borderColor = tab === 'deck' ? 'var(--accent-water)' : '';
+
+      if (tab === 'deck') {
+        loadDeckList();
+      }
+    }
+
+    // ========================================
+    // デッキレシピ機能
+    // ========================================
+    let deckListCache = null;
+    let deckCardsCache = {};
+
+    async function loadDeckList() {
+      const area = document.getElementById('resultsArea');
+      if (deckListCache) {
+        renderDeckList(deckListCache);
+        return;
+      }
+      area.innerHTML = '<div class="loading"><div class="loading-spinner"></div><div class="loading-text">デッキ一覧を読み込み中...</div></div>';
+      try {
+        const resp = await fetch('/api/decks');
+        const data = await resp.json();
+        deckListCache = data.decks;
+        renderDeckList(data.decks);
+      } catch (e) {
+        area.innerHTML = '<div class="loading"><div class="loading-text">&#9888; デッキ一覧の読み込みに失敗</div></div>';
+      }
+    }
+
+    function renderDeckList(decks) {
+      const area = document.getElementById('resultsArea');
+      const icons = { 'スタートデッキ': '&#127775;', '構築済みデッキ': '&#128171;' };
+      let html = '<div class="deck-list">';
+      for (const d of decks) {
+        html += '<div class="deck-item" onclick="loadDeckCards(\'' + esc(d.code) + '\')">' +
+          '<div class="deck-item-icon">' + (icons[d.type] || '&#127183;') + '</div>' +
+          '<div class="deck-item-info"><div class="deck-item-name">' + esc(d.name) + '</div>' +
+          '<div class="deck-item-meta">' + esc(d.type) + ' / ' + d.year + '</div></div>' +
+          '<div class="deck-item-arrow">&#10095;</div></div>';
+      }
+      html += '</div>';
+      area.innerHTML = html;
+    }
+
+    async function loadDeckCards(code) {
+      const area = document.getElementById('resultsArea');
+      const product = deckListCache?.find(d => d.code === code);
+      const productName = product ? product.name : code;
+
+      area.innerHTML = '<div class="loading"><div class="loading-spinner"></div><div class="loading-text">「' + esc(productName) + '」のカードを読み込み中...</div></div>';
+
+      try {
+        let deckData;
+        if (deckCardsCache[code]) {
+          deckData = deckCardsCache[code];
+        } else {
+          const resp = await fetch('/api/deck/' + encodeURIComponent(code));
+          deckData = await resp.json();
+          deckCardsCache[code] = deckData;
+        }
+
+        let html = '<div class="deck-header">' +
+          '<button class="deck-back-btn" onclick="renderDeckList(deckListCache)">&#9664; 戻る</button>' +
+          '<div class="deck-title">' + esc(deckData.name) + '</div></div>';
+
+        html += '<div class="deck-card-grid">';
+        for (const card of deckData.cards) {
+          const thumbUrl = card.thumbnail ? '/api/image?url=' + encodeURIComponent(card.thumbnail) : '';
+          html += '<div class="deck-card-item" data-id="' + esc(card.id) + '" onclick="showCardDetail(\'' + esc(card.id) + '\')">' +
+            (thumbUrl ? '<img class="deck-card-thumb" src="' + thumbUrl + '" loading="lazy" onerror="this.style.display=\'none\'">' : '') +
+            '<div class="deck-card-info"><div class="deck-card-name deck-card-name-' + esc(card.id) + '">' + esc(card.id) + '</div>' +
+            '<div class="deck-card-meta deck-card-meta-' + esc(card.id) + '">読み込み中...</div></div></div>';
+        }
+        html += '</div>';
+        area.innerHTML = html;
+
+        // カード名を非同期で読み込み
+        for (const card of deckData.cards) {
+          loadDeckCardName(card.id);
+        }
+      } catch (e) {
+        area.innerHTML = '<div class="loading"><div class="loading-text">&#9888; デッキ情報の読み込みに失敗</div></div>';
+      }
+    }
+
+    const cardNameCache = {};
+    async function loadDeckCardName(cardId) {
+      try {
+        if (cardNameCache[cardId]) {
+          updateDeckCardDisplay(cardId, cardNameCache[cardId]);
+          return;
+        }
+        const resp = await fetch('/api/card/' + encodeURIComponent(cardId));
+        const data = await resp.json();
+        cardNameCache[cardId] = data;
+        updateDeckCardDisplay(cardId, data);
+      } catch (e) {
+        // silently fail
+      }
+    }
+
+    function updateDeckCardDisplay(cardId, data) {
+      const safeId = CSS.escape ? cardId : cardId.replace(/[^a-zA-Z0-9-_]/g, '');
+      const nameEl = document.querySelector('.deck-card-name-' + safeId);
+      const metaEl = document.querySelector('.deck-card-meta-' + safeId);
+      if (nameEl && data.name) nameEl.textContent = data.name;
+      if (metaEl) {
+        const parts = [];
+        if (data.civilization) parts.push(data.civilization);
+        if (data.cardType) parts.push(data.cardType);
+        if (data.cost) parts.push('コスト' + data.cost);
+        if (data.power) parts.push('パワー' + data.power);
+        metaEl.textContent = parts.join(' / ') || cardId;
+      }
+    }
+
+    // ========================================
+    // 初期化
+    // ========================================
+    document.addEventListener('DOMContentLoaded', () => {
+      initSpeechRecognition();
+      renderSideList();
+
+      // Escキー
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+          closeDetail();
+          document.getElementById('keywordTooltip').classList.remove('visible');
+          document.getElementById('imagePopup').classList.remove('visible');
+        }
+      });
+
+      // ツールチップ閉じる
+      document.addEventListener('click', (e) => {
+        if (!e.target.classList.contains('keyword-highlight')) {
+          document.getElementById('keywordTooltip').classList.remove('visible');
+        }
+      });
+    });
+  </script>
+</body>
+</html>

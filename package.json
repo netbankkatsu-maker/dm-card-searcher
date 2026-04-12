@@ -1,0 +1,13 @@
+{
+  "name": "dm-card-searcher",
+  "version": "1.0.0",
+  "description": "デュエマカード検索くん - 音声認識でカードを検索",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.21.0",
+    "cheerio": "^1.0.0"
+  }
+}

@@ -8,7 +8,7 @@ const PORT = process.env.PORT || 3000;
 app.use(express.static(path.join(__dirname, 'public')));
 app.use(express.json());
 
-// カード検索API - 公式サイトからカード一覧を取得
+// カード検索API - 公式サイトにPOSTで検索
 app.get('/api/search', async (req, res) => {
   try {
     const keyword = req.query.keyword || '';
@@ -16,13 +16,23 @@ app.get('/api/search', async (req, res) => {
       return res.json({ cards: [] });
     }
 
-    const url = `https://dm.takaratomy.co.jp/card/?keyword=${encodeURIComponent(keyword)}`;
-    const response = await fetch(url, {
+    // 公式サイトはPOSTで検索する仕組み
+    const params = new URLSearchParams();
+    params.append('keyword', keyword);
+    params.append('keyword_type[]', 'card_name');
+    params.append('keyword_type[]', 'card_ruby');
+    params.append('keyword_type[]', 'card_text');
+    params.append('samename', 'on');
+
+    const response = await fetch('https://dm.takaratomy.co.jp/card/', {
+      method: 'POST',
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        'Content-Type': 'application/x-www-form-urlencoded',
         'Accept': 'text/html,application/xhtml+xml',
         'Accept-Language': 'ja,en;q=0.9',
-      }
+      },
+      body: params.toString(),
     });
 
     const html = await response.text();
@@ -30,19 +40,13 @@ app.get('/api/search', async (req, res) => {
     const cards = [];
 
     // カード一覧からリンクとサムネイルを抽出
-    // 公式サイトではalt属性が空白なので、IDのみ取得
     $('a[href*="/card/detail/?id="]').each((i, el) => {
       const href = $(el).attr('href') || $(el).attr('data-href') || '';
       const idMatch = href.match(/id=([^&'"]+)/);
       if (idMatch) {
         const id = idMatch[1];
-        const img = $(el).find('img.cardImage');
+        const img = $(el).find('img');
         let thumbUrl = img.attr('src') || img.attr('data-src') || '';
-        if (!thumbUrl) {
-          // fallback: any img inside
-          const anyImg = $(el).find('img');
-          thumbUrl = anyImg.attr('src') || '';
-        }
         if (thumbUrl && !thumbUrl.startsWith('http')) {
           thumbUrl = `https://dm.takaratomy.co.jp${thumbUrl}`;
         }

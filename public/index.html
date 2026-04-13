@@ -763,26 +763,65 @@
         if (data.error) { area.innerHTML = '<div class="loading"><div class="loading-text">&#9888; ' + esc(data.error) + '</div></div>'; return; }
         if (data.cards.length === 0) { area.innerHTML = '<div class="loading"><div class="loading-text">「' + esc(keyword) + '」に一致するカードが見つかりませんでした</div></div>'; return; }
 
-        if (data.cards.length === 1) { showCardDetail(data.cards[0].id); area.innerHTML = ''; addToHistory(keyword); return; }
+        if (data.source === 'db') {
+          // DB検索結果: カード名のみ（超高速）→ タップで詳細取得
+          let html = '<div class="results-grid">';
+          for (let i = 0; i < data.cards.length; i++) {
+            const c = data.cards[i];
+            // カード名をクリックしたら名前で公式検索→詳細表示
+            html += '<div class="result-card" onclick="searchAndShowDetail(\'' + esc(c.name) + '\')">';
+            html += '<div class="result-card-name" style="padding:12px 8px;font-size:0.85rem;">' + esc(c.name) + '</div></div>';
+          }
+          html += '</div>';
+          area.innerHTML = html;
+          addToHistory(keyword);
+        } else {
+          // 公式検索結果: ID+サムネ付き
+          if (data.cards.length === 1 && data.cards[0].id) {
+            showCardDetail(data.cards[0].id);
+            area.innerHTML = '';
+            addToHistory(keyword);
+            return;
+          }
 
-        let html = '<div class="results-grid">';
-        for (const c of data.cards) {
-          const img = c.thumbnail ? '/api/image?url=' + encodeURIComponent(c.thumbnail) : '';
-          const displayName = c.name || '';
-          html += '<div class="result-card" onclick="showCardDetail(\'' + esc(c.id) + '\')">';
-          if (img) html += '<img src="' + img + '" loading="lazy" onerror="this.style.opacity=\'0.3\'">';
-          html += '<div class="result-card-name" id="rcn-' + esc(c.id) + '">' + (displayName ? esc(displayName) : '<span style="color:var(--text-secondary);font-size:0.6rem">読込中...</span>') + '</div></div>';
-        }
-        html += '</div>';
-        area.innerHTML = html;
-        addToHistory(keyword);
+          let html = '<div class="results-grid">';
+          for (const c of data.cards) {
+            const img = c.thumbnail ? '/api/image?url=' + encodeURIComponent(c.thumbnail) : '';
+            const displayName = c.name || '';
+            html += '<div class="result-card" onclick="showCardDetail(\'' + esc(c.id) + '\')">';
+            if (img) html += '<img src="' + img + '" loading="lazy" onerror="this.style.opacity=\'0.3\'">';
+            html += '<div class="result-card-name" id="rcn-' + esc(c.id) + '">' + (displayName ? esc(displayName) : '<span style="color:var(--text-secondary);font-size:0.6rem">読込中...</span>') + '</div></div>';
+          }
+          html += '</div>';
+          area.innerHTML = html;
+          addToHistory(keyword);
 
-        // 名前がない分を非同期で取得
-        for (const c of data.cards) {
-          if (!c.name) loadCardNameForResult(c.id);
+          for (const c of data.cards) {
+            if (!c.name) loadCardNameForResult(c.id);
+          }
         }
       } catch (e) {
         area.innerHTML = '<div class="loading"><div class="loading-text">&#9888; 検索エラー</div></div>';
+      }
+    }
+
+    // カード名から公式サイトで検索→詳細表示
+    async function searchAndShowDetail(cardName) {
+      const overlay = document.getElementById('cardDetailOverlay');
+      const detail = document.getElementById('cardDetail');
+      overlay.classList.add('visible');
+      detail.innerHTML = '<div class="loading" style="height:100vh;"><div class="loading-spinner"></div><div class="loading-text">「' + esc(cardName) + '」を取得中...</div></div>';
+
+      try {
+        const resp = await fetch('/api/search-by-name?name=' + encodeURIComponent(cardName));
+        const data = await resp.json();
+        if (data.id) {
+          showCardDetail(data.id);
+        } else {
+          detail.innerHTML = '<div class="loading" style="height:100vh;"><div class="loading-text">カード情報を取得できませんでした</div></div>';
+        }
+      } catch (e) {
+        detail.innerHTML = '<div class="loading" style="height:100vh;"><div class="loading-text">エラーが発生しました</div></div>';
       }
     }
 

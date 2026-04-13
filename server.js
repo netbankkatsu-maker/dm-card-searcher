@@ -121,10 +121,17 @@ app.get('/api/search', async (req, res) => {
 
     const limitedCards = cards.slice(0, 30);
 
-    // カード名を並列で取得（高速化）
-    await Promise.all(limitedCards.map(async (card) => {
-      card.name = await getCardName(card.id);
-    }));
+    // カード名を5件ずつ並列で取得（公式サイトに負荷をかけすぎない）
+    for (let i = 0; i < limitedCards.length; i += 5) {
+      const batch = limitedCards.slice(i, i + 5);
+      await Promise.all(batch.map(async (card) => {
+        try {
+          card.name = await getCardName(card.id);
+        } catch (e) {
+          card.name = card.id;
+        }
+      }));
+    }
 
     res.json({ cards: limitedCards });
   } catch (error) {

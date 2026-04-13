@@ -5,8 +5,10 @@ const path = require('path');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+const GOOGLE_VISION_API_KEY = process.env.GOOGLE_VISION_API_KEY || 'AIzaSyBOi7ZL4q0WcydVX4hY60IIcVvJp49vQR4';
+
 app.use(express.static(path.join(__dirname, 'public')));
-app.use(express.json());
+app.use(express.json({ limit: '10mb' }));
 
 // カード名キャッシュ（サーバーメモリ上）
 const cardNameCache = {};
@@ -367,6 +369,51 @@ app.get('/api/deck/:code', async (req, res) => {
   } catch (error) {
     console.error('Deck error:', error.message);
     res.status(500).json({ error: 'デッキ情報の取得に失敗しました' });
+  }
+});
+
+// Google Cloud Vision OCR API
+app.post('/api/ocr', async (req, res) => {
+  try {
+    const { image } = req.body; // base64 image data
+    if (!image) {
+      return res.status(400).json({ error: '画像データがありません' });
+    }
+
+    // base64のプレフィックスを除去
+    const base64Data = image.replace(/^data:image\/[^;]+;base64,/, '');
+
+    const visionResp = await fetch(
+      `https://vision.googleapis.com/v1/images:annotate?key=${GOOGLE_VISION_API_KEY}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          requests: [{
+            image: { content: base64Data },
+            features: [{ type: 'TEXT_DETECTION', maxResults: 10 }],
+            imageContext: { languageHints: ['ja'] }
+          }]
+        })
+      }
+    );
+
+    const visionData = await visionResp.json();
+
+    if (visionData.error) {
+      return res.status(500).json({ error: visionData.error.message || 'Vision APIエラー' });
+    }
+
+    const annotations = visionData.responses?.[0]?.textAnnotations || [];
+    const fullText = annotations[0]?.description || '';
+
+    // テキストからカード名候補を抽出
+    const lines = fullText.split(/[\n\r]+/).map(l => l.trim()).filter(l => l.length >= 2 && l.length <= 40);
+
+    res.json({ text: fullText, lines });
+  } catch (error) {
+    console.error('OCR error:', error.message);
+    res.status(500).json({ error: 'OCR処理に失敗しました' });
   }
 });
 

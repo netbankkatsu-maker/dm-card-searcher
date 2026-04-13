@@ -768,14 +768,19 @@
         let html = '<div class="results-grid">';
         for (const c of data.cards) {
           const img = c.thumbnail ? '/api/image?url=' + encodeURIComponent(c.thumbnail) : '';
-          const displayName = c.name || c.id;
+          const displayName = c.name || '';
           html += '<div class="result-card" onclick="showCardDetail(\'' + esc(c.id) + '\')">';
           if (img) html += '<img src="' + img + '" loading="lazy" onerror="this.style.opacity=\'0.3\'">';
-          html += '<div class="result-card-name">' + esc(displayName) + '</div></div>';
+          html += '<div class="result-card-name" id="rcn-' + esc(c.id) + '">' + (displayName ? esc(displayName) : '<span style="color:var(--text-secondary);font-size:0.6rem">読込中...</span>') + '</div></div>';
         }
         html += '</div>';
         area.innerHTML = html;
         addToHistory(keyword);
+
+        // 名前がない分を非同期で取得
+        for (const c of data.cards) {
+          if (!c.name) loadCardNameForResult(c.id);
+        }
       } catch (e) {
         area.innerHTML = '<div class="loading"><div class="loading-text">&#9888; 検索エラー</div></div>';
       }
@@ -936,10 +941,11 @@
       try {
         if (cardNameCache[cardId]) {
           const el = document.getElementById('rcn-' + cardId);
-          if (el) el.textContent = cardNameCache[cardId].name || cardId;
+          if (el) el.textContent = cardNameCache[cardId].name || cardNameCache[cardId] || cardId;
           return;
         }
-        const resp = await fetch('/api/card/' + encodeURIComponent(cardId));
+        // 軽量APIでカード名だけ取得（詳細ページ全体を取得しない）
+        const resp = await fetch('/api/cardname/' + encodeURIComponent(cardId));
         const data = await resp.json();
         cardNameCache[cardId] = data;
         const el = document.getElementById('rcn-' + cardId);

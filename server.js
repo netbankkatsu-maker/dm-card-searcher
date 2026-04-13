@@ -121,22 +121,35 @@ app.get('/api/search', async (req, res) => {
 
     const limitedCards = cards.slice(0, 30);
 
-    // カード名を5件ずつ並列で取得（公式サイトに負荷をかけすぎない）
-    for (let i = 0; i < limitedCards.length; i += 5) {
-      const batch = limitedCards.slice(i, i + 5);
-      await Promise.all(batch.map(async (card) => {
-        try {
-          card.name = await getCardName(card.id);
-        } catch (e) {
-          card.name = card.id;
-        }
-      }));
+    // キャッシュにある分だけ名前を付ける（即座に返すため待たない）
+    for (const card of limitedCards) {
+      if (cardNameCache[card.id]) {
+        card.name = cardNameCache[card.id];
+      }
     }
 
     res.json({ cards: limitedCards });
+
+    // バックグラウンドでキャッシュを温める（次回以降が速くなる）
+    for (const card of limitedCards) {
+      if (!cardNameCache[card.id]) {
+        getCardName(card.id).catch(() => {});
+      }
+    }
   } catch (error) {
     console.error('Search error:', error.message);
     res.status(500).json({ error: '検索に失敗しました' });
+  }
+});
+
+// カード名だけ高速取得API（キャッシュ付き）
+app.get('/api/cardname/:id', async (req, res) => {
+  try {
+    const id = req.params.id;
+    const name = await getCardName(id);
+    res.json({ id, name: name || id });
+  } catch (e) {
+    res.json({ id: req.params.id, name: req.params.id });
   }
 });
 
@@ -280,7 +293,7 @@ app.get('/api/card/:id', async (req, res) => {
 
 // デッキ製品一覧
 const DECK_PRODUCTS = [
-  { code: 'dm26sd1', name: 'ドキドキつよいデッキ 25の王道', type: 'スタートデッキ', year: 2026 },
+  // dm26sd1 は25種ランダムデッキのため個別デッキとしては不適切、除外
   { code: 'dm25bd1', name: 'ドリーム英雄譚デッキ ボルシャックの書', type: '構築済みデッキ', year: 2025 },
   { code: 'dm25bd2', name: 'ドリーム英雄譚デッキ モモキングの書', type: '構築済みデッキ', year: 2025 },
   { code: 'dm25bd3', name: 'グレンモルトの書', type: '構築済みデッキ', year: 2025 },

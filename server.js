@@ -295,21 +295,21 @@ app.get('/api/card/:id', async (req, res) => {
 
 // デッキ製品一覧
 const DECK_PRODUCTS = [
-  // dm26sd1 は25種ランダムデッキのため個別デッキとしては不適切、除外
+  // 公式サイトから取得した正式名称
   { code: 'dm25bd1', name: 'ドリーム英雄譚デッキ ボルシャックの書', type: '構築済みデッキ', year: 2025 },
-  { code: 'dm25bd2', name: 'ドリーム英雄譚デッキ モモキングの書', type: '構築済みデッキ', year: 2025 },
-  { code: 'dm25bd3', name: 'グレンモルトの書', type: '構築済みデッキ', year: 2025 },
-  { code: 'dm25sd1', name: 'いきなりつよいデッキ 竜皇天翔', type: 'スタートデッキ', year: 2025 },
-  { code: 'dm25sd2', name: 'いきなりつよいデッキ 深淵黒魔', type: 'スタートデッキ', year: 2025 },
-  { code: 'dm24bd1', name: '超英雄譚デッキ 「聖霊王の救世主」', type: '構築済みデッキ', year: 2024 },
-  { code: 'dm24bd2', name: '超英雄譚デッキ 「鬼丸覇の極限龍」', type: '構築済みデッキ', year: 2024 },
-  { code: 'dm24bd3', name: '英雄譚デッキ 「ガイアッシュの天命」', type: '構築済みデッキ', year: 2024 },
-  { code: 'dm24bd4', name: '英雄譚デッキ 「デドダムの禁断闘」', type: '構築済みデッキ', year: 2024 },
-  { code: 'dm24sd1', name: 'いきなりつよいデッキ 邪幽の覚醒者', type: 'スタートデッキ', year: 2024 },
+  { code: 'dm25bd2', name: 'ドリーム英雄譚デッキ アルカディアスの書', type: '構築済みデッキ', year: 2025 },
+  { code: 'dm25bd3', name: 'ドリーム英雄譚デッキ グレンモルトの書', type: '構築済みデッキ', year: 2025 },
+  { code: 'dm25sd1', name: 'いきなりつよいデッキ 技の王道', type: 'スタートデッキ', year: 2025 },
+  { code: 'dm25sd2', name: 'いきなりつよいデッキ 力の王道', type: 'スタートデッキ', year: 2025 },
+  { code: 'dm24bd1', name: 'ドリーム英雄譚デッキ ドギラゴンの書', type: '構築済みデッキ', year: 2024 },
+  { code: 'dm24bd2', name: 'ドリーム英雄譚デッキ ジョニーの書', type: '構築済みデッキ', year: 2024 },
+  { code: 'dm24bd3', name: 'ドリーム英雄譚デッキ モモキングの書', type: '構築済みデッキ', year: 2024 },
+  { code: 'dm24bd4', name: 'ナイトメア黙示録デッキ バロムの章', type: '構築済みデッキ', year: 2024 },
+  { code: 'dm24sd1', name: 'いきなりつよいデッキ 攻めの王道', type: 'スタートデッキ', year: 2024 },
   { code: 'dm24sd2', name: 'いきなりつよいデッキ 守りの王道', type: 'スタートデッキ', year: 2024 },
-  { code: 'dm23bd1', name: '頂上デッキ 「カイザー刃鬼」', type: '構築済みデッキ', year: 2023 },
-  { code: 'dm23bd2', name: '頂上デッキ 「月下卍壊」', type: '構築済みデッキ', year: 2023 },
-  { code: 'dm23bd3', name: '頂上デッキ 「切札勝太&カツキング」', type: '構築済みデッキ', year: 2023 },
+  { code: 'dm23bd1', name: 'レジェンドスーパーデッキ 禁王創来', type: '構築済みデッキ', year: 2023 },
+  { code: 'dm23bd2', name: '開発部セレクションデッキ 火闇邪王門', type: '構築済みデッキ', year: 2023 },
+  { code: 'dm23bd3', name: '開発部セレクションデッキ 水闇自然ハンデス', type: '構築済みデッキ', year: 2023 },
 ];
 
 // デッキ製品一覧API

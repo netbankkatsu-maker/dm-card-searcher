@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>デュエマカード検索くん</title>
-  <!-- Google Cloud Vision API (server-side) -->
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
   <style>
     :root {
       --bg-primary: #0a0a1a;
@@ -1140,7 +1140,7 @@
     }
 
     // ========================================
-    // カメラ認識（Google Cloud Vision API）
+    // カメラ認識（Google Vision → Tesseract.js フォールバック）
     // ========================================
     async function handleCameraPhoto(input) {
       const file = input.files[0];
@@ -1167,8 +1167,10 @@
       resultsDiv.style.display = 'none';
       cardList.innerHTML = '';
 
+      let lines = [];
+
       try {
-        // サーバー経由でGoogle Vision APIに送信
+        // まずGoogle Vision APIを試す（高速）
         const ocrResp = await fetch('/api/ocr', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -1176,69 +1178,71 @@
         });
         const ocrData = await ocrResp.json();
 
-        if (ocrData.error) {
-          status.textContent = 'エラー: ' + ocrData.error;
-          return;
+        if (!ocrData.error && ocrData.lines && ocrData.lines.length > 0) {
+          lines = ocrData.lines;
+          status.textContent = '認識完了！カードを検索中...';
+        } else {
+          throw new Error('Vision API unavailable');
         }
-
-        const lines = ocrData.lines || [];
-        if (lines.length === 0) {
-          status.textContent = 'テキストを認識できませんでした。カード名部分をアップで撮ってください。';
-          return;
-        }
-
-        status.textContent = '認識完了！カードを検索中...';
-
-        // 認識されたテキスト行をカード検索
-        resultsDiv.style.display = '';
-        let foundCards = [];
-
-        for (const name of lines.slice(0, 8)) {
-          try {
-            const resp = await fetch('/api/search?keyword=' + encodeURIComponent(name));
-            const data = await resp.json();
-            if (data.cards && data.cards.length > 0) {
-              const card = data.cards[0];
-              if (!foundCards.find(c => c.id === card.id)) {
-                foundCards.push({ ...card, matchedText: name });
+      } catch (e) {
+        // Google Visionが使えない → Tesseract.jsにフォールバック
+        status.textContent = 'ローカルOCRで解析中... (少し時間がかかります)';
+        try {
+          const result = await Tesseract.recognize(file, 'jpn', {
+            logger: m => {
+              if (m.status === 'recognizing text') {
+                status.textContent = '解析中... ' + Math.round((m.progress || 0) * 100) + '%';
               }
             }
-          } catch (e) {}
-        }
-
-        if (foundCards.length === 0) {
-          // 認識テキスト全体で1回検索を試す
-          const fullText = ocrData.text?.replace(/[\n\r]+/g, ' ').substring(0, 50) || '';
-          if (fullText) {
-            try {
-              const resp = await fetch('/api/search?keyword=' + encodeURIComponent(fullText));
-              const data = await resp.json();
-              if (data.cards?.length > 0) {
-                foundCards = data.cards.slice(0, 5);
-              }
-            } catch (e) {}
-          }
-        }
-
-        if (foundCards.length === 0) {
-          status.textContent = '一致するカードが見つかりませんでした。認識テキスト: ' + lines.slice(0, 3).join(', ');
+          });
+          lines = result.data.text.split(/[\n\r]+/).map(l => l.trim()).filter(l => l.length >= 2 && l.length <= 40);
+          status.textContent = '認識完了！カードを検索中...';
+        } catch (e2) {
+          status.textContent = '解析エラー: ' + e2.message;
+          input.value = '';
           return;
         }
-
-        status.textContent = foundCards.length + '枚のカードが見つかりました';
-
-        cardList.innerHTML = foundCards.map(c => {
-          const img = c.thumbnail ? '/api/image?url=' + encodeURIComponent(c.thumbnail) : '';
-          return '<div class="deck-card-item" onclick="showCardDetail(\'' + esc(c.id) + '\');switchMainTab(\'search\');">' +
-            (img ? '<img class="deck-card-thumb" src="' + img + '" onerror="this.style.display=\'none\'">' : '') +
-            '<div class="deck-card-info"><div class="deck-card-name">' + esc(c.name || c.id) + '</div>' +
-            (c.matchedText ? '<div style="font-size:0.7rem;color:var(--text-secondary)">認識: ' + esc(c.matchedText) + '</div>' : '') +
-            '</div></div>';
-        }).join('');
-
-      } catch (e) {
-        status.textContent = '解析エラー: ' + e.message;
       }
+
+      if (lines.length === 0) {
+        status.textContent = 'テキストを認識できませんでした。カード名部分をアップで撮ってください。';
+        input.value = '';
+        return;
+      }
+
+      // 認識されたテキスト行をカード検索
+      resultsDiv.style.display = '';
+      let foundCards = [];
+      const uniqueLines = [...new Set(lines)];
+
+      for (const name of uniqueLines.slice(0, 8)) {
+        try {
+          const resp = await fetch('/api/search?keyword=' + encodeURIComponent(name));
+          const data = await resp.json();
+          if (data.cards && data.cards.length > 0) {
+            const card = data.cards[0];
+            if (!foundCards.find(c => c.id === card.id)) {
+              foundCards.push({ ...card, matchedText: name });
+            }
+          }
+        } catch (e) {}
+      }
+
+      if (foundCards.length === 0) {
+        status.textContent = '一致するカードが見つかりませんでした。認識テキスト: ' + uniqueLines.slice(0, 3).join(', ');
+        input.value = '';
+        return;
+      }
+
+      status.textContent = foundCards.length + '枚のカードが見つかりました';
+      cardList.innerHTML = foundCards.map(c => {
+        const img = c.thumbnail ? '/api/image?url=' + encodeURIComponent(c.thumbnail) : '';
+        return '<div class="deck-card-item" onclick="showCardDetail(\'' + esc(c.id) + '\');switchMainTab(\'search\');">' +
+          (img ? '<img class="deck-card-thumb" src="' + img + '" onerror="this.style.display=\'none\'">' : '') +
+          '<div class="deck-card-info"><div class="deck-card-name">' + esc(c.name || c.id) + '</div>' +
+          (c.matchedText ? '<div style="font-size:0.7rem;color:var(--text-secondary)">認識: ' + esc(c.matchedText) + '</div>' : '') +
+          '</div></div>';
+      }).join('');
 
       input.value = '';
     }

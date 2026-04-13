@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>デュエマカード検索くん</title>
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
   <style>
     :root {
       --bg-primary: #0a0a1a;
@@ -532,8 +533,9 @@
   <div class="header">
     <h1>デュエマカード検索くん</h1>
     <div class="header-buttons">
-      <button class="header-btn" id="tabSearch" onclick="switchMainTab('search')" style="background:var(--accent-water);color:white;border-color:var(--accent-water)">&#128269; カード検索</button>
-      <button class="header-btn" id="tabDeck" onclick="switchMainTab('deck')">&#127183; デッキレシピ</button>
+      <button class="header-btn" id="tabSearch" onclick="switchMainTab('search')" style="background:var(--accent-water);color:white;border-color:var(--accent-water)">&#128269; 検索</button>
+      <button class="header-btn" id="tabCamera" onclick="switchMainTab('camera')">&#128247; カメラ</button>
+      <button class="header-btn" id="tabDeck" onclick="switchMainTab('deck')">&#127183; デッキ</button>
       <button class="header-btn" onclick="document.getElementById('sidePanel').classList.toggle('hidden')">&#9776;</button>
     </div>
   </div>
@@ -552,6 +554,31 @@
   <!-- デッキレシピタブ -->
   <div id="deckTab" style="display:none;">
     <div style="padding:8px 16px;text-align:center;font-size:0.85rem;color:var(--text-secondary);">構築済みデッキ製品のカードリストを閲覧できます</div>
+  </div>
+
+  <!-- カメラタブ -->
+  <div id="cameraTab" style="display:none;">
+    <div style="padding:12px 16px;">
+      <div style="text-align:center;margin-bottom:8px;font-size:0.85rem;color:var(--text-secondary);">カードの写真を撮ると、カード名を認識して検索します</div>
+      <div style="display:flex;gap:8px;justify-content:center;">
+        <label class="icon-btn" style="width:auto;padding:0 16px;border-radius:8px;border-color:var(--accent-nature);color:var(--accent-nature);cursor:pointer;font-size:0.9rem;" id="cameraLabel">
+          &#128247; 写真を撮る
+          <input type="file" accept="image/*" capture="environment" id="cameraInput" style="display:none;" onchange="handleCameraPhoto(this)">
+        </label>
+        <label class="icon-btn" style="width:auto;padding:0 16px;border-radius:8px;border-color:var(--accent-water);color:var(--accent-water);cursor:pointer;font-size:0.9rem;">
+          &#128444; アルバムから
+          <input type="file" accept="image/*" id="albumInput" style="display:none;" onchange="handleCameraPhoto(this)">
+        </label>
+      </div>
+      <div id="cameraStatus" style="text-align:center;padding:8px;font-size:0.85rem;color:var(--accent-light);min-height:24px;"></div>
+      <div id="cameraPreview" style="text-align:center;display:none;">
+        <img id="previewImg" style="max-width:100%;max-height:200px;border-radius:8px;margin-bottom:8px;">
+      </div>
+      <div id="ocrResults" style="display:none;">
+        <div style="font-size:0.85rem;color:var(--accent-water);font-weight:bold;margin-bottom:6px;">&#128270; 認識されたカード名：</div>
+        <div id="ocrCardList"></div>
+      </div>
+    </div>
   </div>
 
   <!-- メインコンテンツ -->
@@ -673,7 +700,7 @@
     function initSpeechRecognition() {
       const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
       if (!SR) {
-        document.getElementById('voiceStatus').textContent = '※ このブラウザは音声認識に対応していません';
+        document.getElementById('voiceStatus').textContent = '※ このブラウザは音声認識に非対応です（Safariまたは Chrome を使ってください）';
         return;
       }
       recognition = new SR();
@@ -983,18 +1010,17 @@
 
     function switchMainTab(tab) {
       currentMainTab = tab;
-      document.getElementById('searchTab').style.display = tab === 'search' ? '' : 'none';
-      document.getElementById('deckTab').style.display = tab === 'deck' ? '' : 'none';
-      document.getElementById('tabSearch').style.background = tab === 'search' ? 'var(--accent-water)' : '';
-      document.getElementById('tabSearch').style.color = tab === 'search' ? 'white' : '';
-      document.getElementById('tabSearch').style.borderColor = tab === 'search' ? 'var(--accent-water)' : '';
-      document.getElementById('tabDeck').style.background = tab === 'deck' ? 'var(--accent-water)' : '';
-      document.getElementById('tabDeck').style.color = tab === 'deck' ? 'white' : '';
-      document.getElementById('tabDeck').style.borderColor = tab === 'deck' ? 'var(--accent-water)' : '';
-
-      if (tab === 'deck') {
-        loadDeckList();
-      }
+      ['search', 'deck', 'camera'].forEach(t => {
+        const el = document.getElementById(t + 'Tab');
+        if (el) el.style.display = t === tab ? '' : 'none';
+        const btn = document.getElementById('tab' + t.charAt(0).toUpperCase() + t.slice(1));
+        if (btn) {
+          btn.style.background = t === tab ? 'var(--accent-water)' : '';
+          btn.style.color = t === tab ? 'white' : '';
+          btn.style.borderColor = t === tab ? 'var(--accent-water)' : '';
+        }
+      });
+      if (tab === 'deck') loadDeckList();
     }
 
     // ========================================
@@ -1105,6 +1131,97 @@
         if (data.power) parts.push('パワー' + data.power);
         metaEl.textContent = parts.join(' / ') || cardId;
       }
+    }
+
+    // ========================================
+    // カメラ認識（Tesseract.js OCR）
+    // ========================================
+    let ocrWorker = null;
+
+    async function handleCameraPhoto(input) {
+      const file = input.files[0];
+      if (!file) return;
+
+      // プレビュー表示
+      const preview = document.getElementById('cameraPreview');
+      const previewImg = document.getElementById('previewImg');
+      const status = document.getElementById('cameraStatus');
+      const resultsDiv = document.getElementById('ocrResults');
+      const cardList = document.getElementById('ocrCardList');
+
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        previewImg.src = e.target.result;
+        preview.style.display = '';
+      };
+      reader.readAsDataURL(file);
+
+      // OCR開始
+      status.textContent = '画像を解析中... しばらくお待ちください';
+      resultsDiv.style.display = 'none';
+      cardList.innerHTML = '';
+
+      try {
+        const result = await Tesseract.recognize(file, 'jpn', {
+          logger: m => {
+            if (m.status === 'recognizing text') {
+              status.textContent = '解析中... ' + Math.round((m.progress || 0) * 100) + '%';
+            }
+          }
+        });
+
+        const text = result.data.text;
+        status.textContent = '解析完了！カード名を検索中...';
+
+        // テキストからカード名っぽい行を抽出
+        const lines = text.split(/[\n\r]+/).map(l => l.trim()).filter(l => l.length >= 2);
+        // 重複排除
+        const uniqueNames = [...new Set(lines)];
+
+        if (uniqueNames.length === 0) {
+          status.textContent = 'カード名を認識できませんでした。カード名が読める角度で撮り直してみてください。';
+          return;
+        }
+
+        // 各行をカード検索して結果を表示
+        resultsDiv.style.display = '';
+        let foundCards = [];
+
+        for (const name of uniqueNames.slice(0, 10)) {
+          try {
+            const resp = await fetch('/api/search?keyword=' + encodeURIComponent(name));
+            const data = await resp.json();
+            if (data.cards && data.cards.length > 0) {
+              const card = data.cards[0];
+              // 重複チェック
+              if (!foundCards.find(c => c.id === card.id)) {
+                foundCards.push(card);
+              }
+            }
+          } catch (e) {}
+        }
+
+        if (foundCards.length === 0) {
+          status.textContent = '一致するカードが見つかりませんでした。カード名部分をアップで撮ってみてください。';
+          return;
+        }
+
+        status.textContent = foundCards.length + '枚のカードを認識しました';
+
+        // 結果カードリスト表示
+        cardList.innerHTML = foundCards.map(c => {
+          const img = c.thumbnail ? '/api/image?url=' + encodeURIComponent(c.thumbnail) : '';
+          return '<div class="deck-card-item" onclick="showCardDetail(\'' + esc(c.id) + '\');switchMainTab(\'search\');">' +
+            (img ? '<img class="deck-card-thumb" src="' + img + '" onerror="this.style.display=\'none\'">' : '') +
+            '<div class="deck-card-info"><div class="deck-card-name">' + esc(c.name || c.id) + '</div></div></div>';
+        }).join('');
+
+      } catch (e) {
+        status.textContent = '解析エラー: ' + e.message;
+      }
+
+      // inputリセット
+      input.value = '';
     }
 
     // ========================================

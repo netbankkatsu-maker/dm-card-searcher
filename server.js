@@ -306,7 +306,7 @@ const DECK_PRODUCTS = [
   { code: 'dm24bd3', name: '英雄譚デッキ 「ガイアッシュの天命」', type: '構築済みデッキ', year: 2024 },
   { code: 'dm24bd4', name: '英雄譚デッキ 「デドダムの禁断闘」', type: '構築済みデッキ', year: 2024 },
   { code: 'dm24sd1', name: 'いきなりつよいデッキ 邪幽の覚醒者', type: 'スタートデッキ', year: 2024 },
-  { code: 'dm24sd2', name: 'いきなりつよいデッキ 正義の天秤', type: 'スタートデッキ', year: 2024 },
+  { code: 'dm24sd2', name: 'いきなりつよいデッキ 守りの王道', type: 'スタートデッキ', year: 2024 },
   { code: 'dm23bd1', name: '頂上デッキ 「カイザー刃鬼」', type: '構築済みデッキ', year: 2023 },
   { code: 'dm23bd2', name: '頂上デッキ 「月下卍壊」', type: '構築済みデッキ', year: 2023 },
   { code: 'dm23bd3', name: '頂上デッキ 「切札勝太&カツキング」', type: '構築済みデッキ', year: 2023 },

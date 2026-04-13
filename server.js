@@ -8,6 +8,30 @@ const PORT = process.env.PORT || 3000;
 app.use(express.static(path.join(__dirname, 'public')));
 app.use(express.json());
 
+// カード名キャッシュ（サーバーメモリ上）
+const cardNameCache = {};
+
+// カード名を高速取得（キャッシュ付き）
+async function getCardName(cardId) {
+  if (cardNameCache[cardId]) return cardNameCache[cardId];
+  try {
+    const resp = await fetch(`https://dm.takaratomy.co.jp/card/detail/?id=${encodeURIComponent(cardId)}`, {
+      headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' }
+    });
+    const html = await resp.text();
+    const $ = cheerio.load(html);
+    const nameEl = $('h3.card-name').first();
+    if (nameEl.length) {
+      const clone = nameEl.clone();
+      clone.find('.packname').remove();
+      const name = clone.text().trim();
+      cardNameCache[cardId] = name;
+      return name;
+    }
+  } catch (e) {}
+  return '';
+}
+
 // キーワードの表記ゆれを補正（中黒あり/なし、スペースなど）
 function generateSearchVariants(keyword) {
   const variants = [keyword];
@@ -95,7 +119,14 @@ app.get('/api/search', async (req, res) => {
       if (cards.length > 0) break;
     }
 
-    res.json({ cards: cards.slice(0, 30) });
+    const limitedCards = cards.slice(0, 30);
+
+    // カード名を並列で取得（高速化）
+    await Promise.all(limitedCards.map(async (card) => {
+      card.name = await getCardName(card.id);
+    }));
+
+    res.json({ cards: limitedCards });
   } catch (error) {
     console.error('Search error:', error.message);
     res.status(500).json({ error: '検索に失敗しました' });

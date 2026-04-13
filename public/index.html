@@ -518,8 +518,8 @@
 
     /* レスポンシブ */
     @media (max-width: 600px) {
-      .side-panel { position: fixed; top: 0; left: 0; height: 100%; z-index: 150; width: 240px; }
-      .side-panel.hidden { width: 0; }
+      .side-panel { position: fixed; top: 0; left: 0; height: 100%; z-index: 150; width: 260px; box-shadow: 4px 0 20px rgba(0,0,0,0.5); }
+      .side-panel.hidden { width: 0; box-shadow: none; }
       .detail-header { flex-wrap: wrap; }
       .detail-header-actions { width: 100%; justify-content: flex-end; }
       .results-grid { grid-template-columns: repeat(auto-fill, minmax(90px, 1fr)); }
@@ -740,8 +740,11 @@
 
         let html = '<div class="results-grid">';
         for (const c of data.cards) {
-          const img = '/api/image?url=' + encodeURIComponent(c.thumbnail);
-          html += '<div class="result-card" onclick="showCardDetail(\'' + esc(c.id) + '\')"><img src="' + img + '" loading="lazy" onerror="this.style.opacity=\'0.3\'"><div class="result-card-name">' + esc(c.id) + '</div></div>';
+          const img = c.thumbnail ? '/api/image?url=' + encodeURIComponent(c.thumbnail) : '';
+          const displayName = c.name || c.id;
+          html += '<div class="result-card" onclick="showCardDetail(\'' + esc(c.id) + '\')">';
+          if (img) html += '<img src="' + img + '" loading="lazy" onerror="this.style.opacity=\'0.3\'">';
+          html += '<div class="result-card-name">' + esc(displayName) + '</div></div>';
         }
         html += '</div>';
         area.innerHTML = html;
@@ -897,6 +900,27 @@
       if (top + 200 > window.innerHeight) top = r.top - 200;
       tip.style.top = Math.max(10, top) + 'px';
       tip.style.left = Math.max(10, left) + 'px';
+    }
+
+    // ========================================
+    // 検索結果のカード名を非同期ロード
+    // ========================================
+    async function loadCardNameForResult(cardId) {
+      try {
+        if (cardNameCache[cardId]) {
+          const el = document.getElementById('rcn-' + cardId);
+          if (el) el.textContent = cardNameCache[cardId].name || cardId;
+          return;
+        }
+        const resp = await fetch('/api/card/' + encodeURIComponent(cardId));
+        const data = await resp.json();
+        cardNameCache[cardId] = data;
+        const el = document.getElementById('rcn-' + cardId);
+        if (el) el.textContent = data.name || cardId;
+      } catch (e) {
+        const el = document.getElementById('rcn-' + cardId);
+        if (el) el.textContent = cardId;
+      }
     }
 
     // ========================================

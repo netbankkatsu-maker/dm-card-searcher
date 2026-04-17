@@ -652,28 +652,429 @@ function paySummonCost(who, card) {
   }
 }
 
-function summonCreature(who, handIdx) {
+async function summonCreature(who, handIdx) {
   const p = game[who];
   const card = p.hand[handIdx];
   if (!card) return false;
+  if (card.cardType === '呪文') {
+    // 呪文はキャスト
+    return await castSpell(who, handIdx);
+  }
   if (card.cardType !== 'クリーチャー') return false;
   if (!canPaySummonCost(who, card)) return false;
 
   paySummonCost(who, card);
   p.hand.splice(handIdx, 1);
-  p.battleZone.push({
+  const instance = {
     ...card,
     tapped: false,
     summoningSickness: !card.keywords.speedAttacker,
-  });
+  };
+  p.battleZone.push(instance);
   addLog(`${who === 'player' ? 'あなた' : 'AI'}が${card.name}を召喚`);
+  renderDuelUI();
+
+  // cip効果発動
+  await triggerEffect(card, 'cip', who);
   return true;
 }
 
-function playerSummon(handIdx) {
+async function castSpell(who, handIdx) {
+  const p = game[who];
+  const card = p.hand[handIdx];
+  if (!card) return false;
+  if (!canPaySummonCost(who, card)) return false;
+
+  paySummonCost(who, card);
+  p.hand.splice(handIdx, 1);
+  addLog(`${who === 'player' ? 'あなた' : 'AI'}が${card.name}を唱えた`);
+  renderDuelUI();
+
+  // 呪文効果発動
+  await triggerEffect(card, 'cast', who);
+
+  // 墓地へ
+  p.graveyard.push(card);
+  renderDuelUI();
+  return true;
+}
+
+async function playerSummon(handIdx) {
   if (game.turn !== 'player' || game.winner) return;
-  if (summonCreature('player', handIdx)) {
+  if (await summonCreature('player', handIdx)) {
     renderDuelUI();
+  }
+}
+
+// ========== AI効果解釈エンジン ==========
+let effectCache = {}; // クライアント側キャッシュ
+
+async function triggerEffect(card, trigger, owner) {
+  if (!card.effects || card.effects.length === 0) return;
+  // 解釈不要なほど単純なカードをスキップ（キーワードのみのケース）
+  const effectsText = card.effects.join('\n');
+  const simpleOnly = /^(ブロッカー|スピードアタッカー|W・ブレイカー|T・ブレイカー|Q・ブレイカー|スレイヤー|シールド・トリガー|S・トリガー|[　\s,、]+)+$/.test(effectsText.trim());
+  if (simpleOnly) return;
+
+  // キャッシュキー
+  const cacheKey = (card.id || card.name) + '::' + trigger;
+  let result = effectCache[cacheKey];
+
+  if (!result) {
+    try {
+      const resp = await fetch('/api/interpret-effect', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          card: {
+            id: card.id,
+            name: card.name,
+            cardType: card.cardType,
+            civilization: card.civilization,
+            cost: card.cost,
+            power: card.power,
+            effects: card.effects,
+          },
+          trigger,
+        }),
+      });
+      result = await resp.json();
+      if (!/選ぶ|選んで|1体|1枚/.test(effectsText)) {
+        effectCache[cacheKey] = result;
+      }
+    } catch (e) {
+      addLog(`効果解釈エラー: ${e.message}`);
+      return;
+    }
+  }
+
+  if (!result || !result.actions) return;
+  if (result.note) addLog(`[${card.name}の効果] ${result.note}`);
+
+  for (const action of result.actions) {
+    await executeAction(action, owner, card);
+    renderDuelUI();
+    await wait(300);
+  }
+}
+
+async function executeAction(action, owner, sourceCard) {
+  const opponent = owner === 'player' ? 'ai' : 'player';
+  const me = game[owner];
+  const opp = game[opponent];
+
+  const resolveSide = (side) => {
+    if (side === 'self' || side === 'my') return owner;
+    if (side === 'enemy' || side === 'opponent') return opponent;
+    return owner;
+  };
+
+  try {
+    switch (action.type) {
+      case 'draw': {
+        const who = resolveSide(action.who || 'self');
+        for (let i = 0; i < (action.count || 1); i++) drawCard(who);
+        break;
+      }
+      case 'mill': {
+        const who = resolveSide(action.who || 'enemy');
+        for (let i = 0; i < (action.count || 1); i++) {
+          const c = game[who].deck.shift();
+          if (c) game[who].graveyard.push(c);
+        }
+        addLog(`${action.count || 1}枚を墓地へ`);
+        break;
+      }
+      case 'destroy_choose': {
+        const side = action.side || 'enemy';
+        const who = side === 'any' ? null : resolveSide(side);
+        const targets = collectTargets(who, action.criteria || {}, 'creature');
+        await chooseAndDestroy(targets, action.count || 1, owner);
+        break;
+      }
+      case 'destroy_all': {
+        const side = action.side || 'enemy';
+        const ownersToCheck = side === 'all' ? ['player', 'ai'] : [resolveSide(side)];
+        for (const o of ownersToCheck) {
+          const matches = game[o].battleZone.filter(c => matchCriteria(c, action.criteria || {}));
+          for (const m of matches) destroyCreature(o, m);
+        }
+        break;
+      }
+      case 'bounce_choose': {
+        const side = action.side || 'enemy';
+        const targets = collectTargets(resolveSide(side), action.criteria || {}, 'creature');
+        await chooseAndBounce(targets, action.count || 1, owner);
+        break;
+      }
+      case 'to_mana_choose': {
+        const side = action.side || 'enemy';
+        const targets = collectTargets(resolveSide(side), action.criteria || {}, 'creature');
+        await chooseAndToMana(targets, action.count || 1, owner);
+        break;
+      }
+      case 'power_boost': {
+        const targets = action.target === 'all_self' ? [...me.battleZone]
+          : action.target === 'self' ? (sourceCard ? me.battleZone.filter(c => c.instanceId === sourceCard.instanceId) : [])
+          : [];
+        for (const t of targets) {
+          t.powerMod = (t.powerMod || 0) + (action.amount || 0);
+          t.power = (t.power || 0) + (action.amount || 0);
+        }
+        if (targets.length > 0) addLog(`パワー+${action.amount || 0}`);
+        break;
+      }
+      case 'power_reduce': {
+        const targets = collectTargets(opponent, action.criteria || {}, 'creature');
+        await chooseAndReducePower(targets, action.amount || 0, owner);
+        break;
+      }
+      case 'tap_choose': {
+        const side = action.side || 'enemy';
+        const targets = collectTargets(resolveSide(side), action.criteria || {}, 'creature').filter(t => !t.tapped);
+        await chooseAndTap(targets, action.count || 1, owner);
+        break;
+      }
+      case 'tap_all': {
+        const side = action.side || 'enemy';
+        const ownersToCheck = side === 'all' ? ['player', 'ai'] : [resolveSide(side)];
+        for (const o of ownersToCheck) {
+          game[o].battleZone.forEach(c => c.tapped = true);
+        }
+        break;
+      }
+      case 'untap_choose': {
+        const side = action.side || 'self';
+        const targets = collectTargets(resolveSide(side), action.criteria || {}, 'creature').filter(t => t.tapped);
+        await chooseAndUntap(targets, action.count || 1, owner);
+        break;
+      }
+      case 'summon_from_grave': {
+        const candidates = me.graveyard.filter(c => c.cardType === 'クリーチャー' && matchCriteria(c, action.criteria || {}));
+        await chooseAndSummonFromGrave(candidates, 1, owner);
+        break;
+      }
+      case 'search_deck': {
+        // 山札から条件合致を探す（簡易版: 最初に見つかったものを手札へ）
+        const dest = action.destination || 'hand';
+        const criteria = action.criteria || {};
+        const idx = me.deck.findIndex(c => matchCriteria(c, criteria));
+        if (idx >= 0) {
+          const card = me.deck.splice(idx, 1)[0];
+          if (dest === 'hand') me.hand.push(card);
+          else if (dest === 'mana') me.mana.push({ ...card, tapped: false });
+          else if (dest === 'battle' && card.cardType === 'クリーチャー') {
+            me.battleZone.push({ ...card, tapped: false, summoningSickness: true });
+          }
+          shuffleDeck(owner);
+          addLog(`山札から${card.name}を${dest === 'hand' ? '手札' : dest === 'mana' ? 'マナ' : 'バトルゾーン'}に`);
+        }
+        break;
+      }
+      case 'grant_keyword': {
+        const targets = action.target === 'all_self' ? me.battleZone : (sourceCard ? me.battleZone.filter(c => c.instanceId === sourceCard.instanceId) : []);
+        for (const t of targets) {
+          if (!t.keywords) t.keywords = {};
+          if (action.keyword === 'blocker') t.keywords.blocker = true;
+          if (action.keyword === 'speed_attacker') { t.keywords.speedAttacker = true; t.summoningSickness = false; }
+          if (action.keyword === 'slayer') t.keywords.slayer = true;
+          if (action.keyword === 'w_breaker') t.keywords.breaker = Math.max(t.keywords.breaker || 1, 2);
+          if (action.keyword === 't_breaker') t.keywords.breaker = Math.max(t.keywords.breaker || 1, 3);
+          if (action.keyword === 'q_breaker') t.keywords.breaker = Math.max(t.keywords.breaker || 1, 4);
+        }
+        if (targets.length > 0) addLog(`能力付与: ${action.keyword}`);
+        break;
+      }
+      case 'break_extra_shields': {
+        // 次の攻撃時に追加ブレイク（簡易版: sourceCardのブレイカーを上げる）
+        if (sourceCard) {
+          const inBZ = me.battleZone.find(c => c.instanceId === sourceCard.instanceId);
+          if (inBZ) {
+            inBZ.keywords.breaker = Math.max(inBZ.keywords.breaker, (action.count || 1) + 1);
+          }
+        }
+        break;
+      }
+      case 'no_effect':
+        break;
+      case 'require_player_choice':
+        // 簡易版: プロンプトをログに出すだけ
+        addLog(`[選択効果] ${action.prompt || ''}`);
+        break;
+      default:
+        addLog(`(未対応: ${action.type})`);
+    }
+  } catch (e) {
+    console.error('executeAction error:', e);
+  }
+}
+
+function shuffleDeck(who) {
+  game[who].deck = shuffle(game[who].deck);
+}
+
+function collectTargets(who, criteria, kind = 'creature') {
+  const ownersToCheck = who ? [who] : ['player', 'ai'];
+  const targets = [];
+  for (const o of ownersToCheck) {
+    for (const c of game[o].battleZone) {
+      if (matchCriteria(c, criteria)) targets.push({ card: c, owner: o });
+    }
+  }
+  return targets;
+}
+
+function matchCriteria(card, criteria) {
+  if (!criteria) return true;
+  if (criteria.cost_max !== undefined && (card.cost || 0) > criteria.cost_max) return false;
+  if (criteria.cost_min !== undefined && (card.cost || 0) < criteria.cost_min) return false;
+  if (criteria.power_max !== undefined && (card.power || 0) > criteria.power_max) return false;
+  if (criteria.power_min !== undefined && (card.power || 0) < criteria.power_min) return false;
+  if (criteria.civilization && criteria.civilization.length > 0) {
+    const cc = (card.civilization || '').split(/[\/／・]/).map(s => s.trim());
+    if (!criteria.civilization.some(x => cc.includes(x))) return false;
+  }
+  if (criteria.card_type && card.cardType && !card.cardType.includes(criteria.card_type)) return false;
+  if (criteria.race && !(card.race || '').includes(criteria.race)) return false;
+  return true;
+}
+
+// ========== 対象選択UI ==========
+async function chooseTargets(targets, count, owner, prompt) {
+  if (targets.length === 0) return [];
+  if (targets.length <= count) return targets;
+  if (owner === 'ai') {
+    return aiChooseTargets(targets, count);
+  }
+  return await askPlayerChooseTargets(targets, count, prompt);
+}
+
+function aiChooseTargets(targets, count) {
+  // 弱い相手から順に（パワー低い順）
+  const sorted = [...targets].sort((a, b) => (b.card.power || 0) - (a.card.power || 0));
+  return sorted.slice(0, count);
+}
+
+function askPlayerChooseTargets(targets, count, prompt) {
+  return new Promise((resolve) => {
+    const overlay = document.createElement('div');
+    overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.85);z-index:500;display:flex;justify-content:center;align-items:center;padding:16px;';
+    const selected = [];
+    const render = () => {
+      overlay.innerHTML = `
+        <div style="background:var(--bg-card);border:2px solid var(--border-color);border-radius:12px;padding:16px;max-width:500px;width:100%;max-height:90vh;overflow-y:auto;">
+          <h3 style="margin-bottom:10px;">🎯 ${prompt || '選択してください'}</h3>
+          <div style="color:var(--text-secondary);margin-bottom:10px;font-size:0.85rem;">${selected.length}/${count}枚選択中</div>
+          <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px;">
+            ${targets.map((t, i) => {
+              const sel = selected.includes(i);
+              return `<div data-i="${i}" style="background:${sel ? 'var(--accent-water)' : 'var(--bg-hover)'};padding:8px;border-radius:6px;cursor:pointer;font-size:0.85rem;border:2px solid ${sel ? 'var(--accent-light)' : 'transparent'};">
+                <div style="font-weight:bold;">${t.card.name}</div>
+                <div style="font-size:0.7rem;opacity:0.8;">${t.owner === 'player' ? '自分' : '相手'} / P${t.card.power || '-'}</div>
+              </div>`;
+            }).join('')}
+          </div>
+          <div style="display:flex;gap:8px;">
+            <button id="confirmChoice" ${selected.length === 0 ? 'disabled' : ''} style="flex:1;padding:8px;background:${selected.length > 0 ? 'var(--accent-water)' : 'var(--bg-hover)'};border:none;color:white;border-radius:6px;cursor:pointer;">決定</button>
+            <button id="cancelChoice" style="padding:8px 16px;background:var(--bg-hover);border:1px solid var(--border-color);color:var(--text-primary);border-radius:6px;cursor:pointer;">効果なしで終了</button>
+          </div>
+        </div>
+      `;
+      overlay.querySelectorAll('[data-i]').forEach(el => {
+        el.onclick = () => {
+          const i = parseInt(el.dataset.i);
+          const pos = selected.indexOf(i);
+          if (pos >= 0) selected.splice(pos, 1);
+          else if (selected.length < count) selected.push(i);
+          render();
+        };
+      });
+      overlay.querySelector('#confirmChoice').onclick = () => {
+        document.body.removeChild(overlay);
+        resolve(selected.map(i => targets[i]));
+      };
+      overlay.querySelector('#cancelChoice').onclick = () => {
+        document.body.removeChild(overlay);
+        resolve([]);
+      };
+    };
+    render();
+    document.body.appendChild(overlay);
+  });
+}
+
+async function chooseAndDestroy(targets, count, owner) {
+  const chosen = await chooseTargets(targets, count, owner, `破壊するクリーチャーを${count}体選んでください`);
+  for (const t of chosen) destroyCreature(t.owner, t.card);
+}
+
+async function chooseAndBounce(targets, count, owner) {
+  const chosen = await chooseTargets(targets, count, owner, `手札に戻すクリーチャーを${count}体選んでください`);
+  for (const t of chosen) {
+    const idx = game[t.owner].battleZone.findIndex(c => c.instanceId === t.card.instanceId);
+    if (idx >= 0) {
+      const c = game[t.owner].battleZone.splice(idx, 1)[0];
+      game[t.owner].hand.push(c);
+      addLog(`${c.name}を手札に戻す`);
+    }
+  }
+}
+
+async function chooseAndToMana(targets, count, owner) {
+  const chosen = await chooseTargets(targets, count, owner, `マナゾーンに送るクリーチャーを${count}体選んでください`);
+  for (const t of chosen) {
+    const idx = game[t.owner].battleZone.findIndex(c => c.instanceId === t.card.instanceId);
+    if (idx >= 0) {
+      const c = game[t.owner].battleZone.splice(idx, 1)[0];
+      game[t.owner].mana.push({ ...c, tapped: false });
+      addLog(`${c.name}をマナに送る`);
+    }
+  }
+}
+
+async function chooseAndTap(targets, count, owner) {
+  const chosen = await chooseTargets(targets, count, owner, `タップするクリーチャーを${count}体選んでください`);
+  for (const t of chosen) t.card.tapped = true;
+}
+
+async function chooseAndUntap(targets, count, owner) {
+  const chosen = await chooseTargets(targets, count, owner, `アンタップするクリーチャーを${count}体選んでください`);
+  for (const t of chosen) t.card.tapped = false;
+}
+
+async function chooseAndReducePower(targets, amount, owner) {
+  const chosen = await chooseTargets(targets, 1, owner, `パワー-${amount}するクリーチャーを選んでください`);
+  for (const t of chosen) {
+    t.card.power = Math.max(0, (t.card.power || 0) - amount);
+    if (t.card.power <= 0) destroyCreature(t.owner, t.card);
+  }
+}
+
+async function chooseAndSummonFromGrave(candidates, count, owner) {
+  if (candidates.length === 0) return;
+  if (owner === 'ai') {
+    // AI: 一番強いクリーチャーを選ぶ
+    candidates.sort((a, b) => (b.power || 0) - (a.power || 0));
+    const toSummon = candidates.slice(0, count);
+    for (const c of toSummon) {
+      const idx = game[owner].graveyard.findIndex(x => x.instanceId === c.instanceId);
+      if (idx >= 0) {
+        const card = game[owner].graveyard.splice(idx, 1)[0];
+        game[owner].battleZone.push({ ...card, tapped: false, summoningSickness: true });
+        addLog(`墓地から${card.name}を召喚`);
+      }
+    }
+  } else {
+    const targets = candidates.map(c => ({ card: c, owner }));
+    const chosen = await chooseTargets(targets, count, owner, `墓地から召喚するクリーチャーを選んでください`);
+    for (const t of chosen) {
+      const idx = game[owner].graveyard.findIndex(x => x.instanceId === t.card.instanceId);
+      if (idx >= 0) {
+        const card = game[owner].graveyard.splice(idx, 1)[0];
+        game[owner].battleZone.push({ ...card, tapped: false, summoningSickness: true });
+        addLog(`墓地から${card.name}を召喚`);
+      }
+    }
   }
 }
 
@@ -849,6 +1250,8 @@ function destroyCreature(who, creature) {
     p.battleZone.splice(idx, 1);
     p.graveyard.push(creature);
     addLog(`${creature.name}が破壊された`);
+    // pig効果（非同期、ゲーム進行は待たない）
+    triggerEffect(creature, 'pig', who).catch(() => {});
   }
 }
 
@@ -909,7 +1312,7 @@ async function aiTakeTurn() {
     summoned = false;
     const playableIdx = findBestCreatureToPlay();
     if (playableIdx >= 0) {
-      summonCreature('ai', playableIdx);
+      await summonCreature('ai', playableIdx);
       renderDuelUI();
       summoned = true;
       await wait(600);
@@ -948,14 +1351,15 @@ function chooseAiManaCharge() {
 
 function findBestCreatureToPlay() {
   const hand = game.ai.hand;
+  // クリーチャーと呪文の両方を候補に
   const playable = hand
     .map((c, i) => ({ c, i }))
-    .filter(x => x.c.cardType === 'クリーチャー' && canPaySummonCost('ai', x.c));
+    .filter(x => (x.c.cardType === 'クリーチャー' || x.c.cardType === '呪文') && canPaySummonCost('ai', x.c));
   if (playable.length === 0) return -1;
   if (game.difficulty === 'easy') {
     return playable[Math.floor(Math.random() * playable.length)].i;
   }
-  // 普通/強い: 一番コストが高い=強いクリーチャーを優先
+  // 普通/強い: 一番コストが高い=強いカードを優先
   playable.sort((a, b) => b.c.cost - a.c.cost);
   return playable[0].i;
 }
@@ -1112,17 +1516,20 @@ function renderBattleCard(c, who) {
 }
 
 function renderHandCard(c, i) {
-  const canPlay = game.turn === 'player' && !game.winner && c.cardType === 'クリーチャー' && canPaySummonCost('player', c);
+  const isCreature = c.cardType === 'クリーチャー';
+  const isSpell = c.cardType === '呪文';
+  const canPlay = game.turn === 'player' && !game.winner && (isCreature || isSpell) && canPaySummonCost('player', c);
   const canCharge = game.turn === 'player' && !game.hasCharged && !game.winner;
   const civ = (c.civilization || '').split(/[\/／・]/)[0].trim();
   const civClass = civClassOf(civ);
+  const playLabel = isCreature ? '召喚' : (isSpell ? '唱える' : '使用');
   return `
     <div class="hand-card ${civClass}">
       <div class="hc-cost">${c.cost}</div>
       <div class="hc-name">${c.name}</div>
-      <div class="hc-power">${c.power || ''}</div>
+      <div class="hc-power">${c.power || (isSpell ? '呪文' : '')}</div>
       <div class="hc-actions">
-        ${canPlay ? `<button onclick="playerSummon(${i})">召喚</button>` : ''}
+        ${canPlay ? `<button onclick="playerSummon(${i})">${playLabel}</button>` : ''}
         ${canCharge ? `<button onclick="playerChargeMana(${i})">マナ</button>` : ''}
       </div>
     </div>

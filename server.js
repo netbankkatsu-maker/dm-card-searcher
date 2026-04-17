@@ -7,6 +7,7 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 const GOOGLE_VISION_API_KEY = process.env.GOOGLE_VISION_API_KEY || 'AIzaSyBOi7ZL4q0WcydVX4hY60IIcVvJp49vQR4';
+const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || '';
 
 app.use(express.static(path.join(__dirname, 'public')));
 app.use(express.json({ limit: '10mb' }));
@@ -566,6 +567,163 @@ app.post('/api/ocr', async (req, res) => {
     console.error('OCR error:', error.message);
     res.status(500).json({ error: 'OCR処理に失敗しました' });
   }
+});
+
+// ========================================
+// カード効果解釈API（Claude）
+// ========================================
+// 同じカード×同じトリガーの結果はキャッシュ（ゲーム状態に依存する部分は再解釈）
+const effectInterpretCache = {};
+
+const EFFECT_INTERPRETER_SYSTEM = `あなたはデュエル・マスターズ（デュエマ）のカード効果を解釈して、ゲームエンジンが実行できるJSON形式のアクションリストに変換する専門家です。
+
+カード効果テキストが入力されます。それを以下のJSON形式で返してください：
+
+{
+  "actions": [
+    { "type": "アクション名", ...パラメータ }
+  ],
+  "note": "簡潔な日本語説明"
+}
+
+## 使えるアクションtype:
+
+### ドロー系
+- { "type": "draw", "who": "self|opponent", "count": N } 山札からN枚ドロー
+- { "type": "mill", "who": "self|opponent", "count": N } 山札上からN枚を墓地へ
+
+### 破壊・除去系
+- { "type": "destroy_choose", "side": "enemy|self|any", "count": N, "criteria": {...} } N体選んで破壊
+- { "type": "destroy_all", "side": "enemy|self|all", "criteria": {...} } 条件合致を全て破壊
+- { "type": "bounce_choose", "side": "enemy|self", "count": N, "criteria": {...} } 手札に戻す
+- { "type": "to_mana_choose", "side": "enemy|self", "count": N, "criteria": {...} } マナに送る
+- { "type": "to_shield_choose", "side": "enemy|self", "count": N, "criteria": {...} } シールドに送る
+
+### パワー変化
+- { "type": "power_boost", "target": "self|all_self|choose_self", "amount": N, "duration": "turn|permanent" }
+- { "type": "power_reduce", "target": "choose_enemy", "amount": N, "duration": "turn" }
+
+### タップ系
+- { "type": "tap_choose", "side": "enemy|self", "count": N }
+- { "type": "untap_choose", "side": "self", "count": N }
+- { "type": "tap_all", "side": "enemy|self" }
+
+### 召喚・配置系
+- { "type": "summon_from_hand", "criteria": {"cost_max": N} } コスト以下のクリーチャーを手札から出す
+- { "type": "summon_from_grave", "criteria": {"cost_max": N} }
+- { "type": "search_deck", "criteria": {...}, "count": 1, "destination": "hand|mana|battle" }
+- { "type": "return_to_hand_self" } このクリーチャー自身を手札に戻す
+- { "type": "self_destroy" }
+
+### シールド系
+- { "type": "break_extra_shields", "count": N } 追加でN枚ブレイク
+- { "type": "add_shield", "who": "self", "count": 1 } シールドを1枚追加
+- { "type": "reveal_shield_and_trigger" }
+
+### 攻撃・戦闘
+- { "type": "force_attack", "target": "self|all_enemy" } 攻撃しなければならない
+- { "type": "prevent_attack", "side": "enemy" } 攻撃できない
+- { "type": "prevent_block", "target": "self" } ブロックされない
+- { "type": "extra_attack", "who": "self" } もう一度攻撃可能
+
+### 能力付与
+- { "type": "grant_keyword", "target": "self|all_self", "keyword": "blocker|speed_attacker|slayer|w_breaker|t_breaker|q_breaker", "duration": "turn|permanent" }
+
+### 特殊
+- { "type": "require_player_choice", "prompt": "選択内容の説明", "options": [...] }
+- { "type": "no_effect", "reason": "理由" } 効果対象がない等で何もしない
+
+## 基準（criteria）の例:
+- { "cost_max": 5 } コスト5以下
+- { "power_max": 5000 } パワー5000以下
+- { "power_min": 3000 } パワー3000以上
+- { "civilization": ["火", "闇"] } 火または闇のクリーチャー
+- { "card_type": "クリーチャー|呪文" }
+- { "race": "ドラゴン" } 種族フィルター
+
+## 重要ルール:
+1. 「このクリーチャーがバトルゾーンに出た時」= cip効果（召喚時実行）
+2. 「破壊された時」= pig効果（破壊時実行）
+3. 「自分のターン中」= 効果範囲を示すもので、トリガーではない静的効果
+4. 「シールド・トリガー」は手札に加えた後に唱える選択
+5. 対象選択が必要な効果は 'choose' 付きアクションを使う
+6. 相手は opponent または enemy
+7. 自分は self または my
+8. 不明な効果やサポート外の複雑な効果は { "type": "no_effect", "reason": "..." } を返す
+
+必ず純粋なJSONのみ返答。説明文は不要。`;
+
+// 効果を解釈
+async function interpretCardEffect(card, trigger, gameContext = {}) {
+  if (!ANTHROPIC_API_KEY) {
+    return { actions: [{ type: 'no_effect', reason: 'APIキー未設定' }], note: '' };
+  }
+
+  const cacheKey = `${card.id || card.name}::${trigger}`;
+  // 対象選択を含む場合はゲーム状態依存なのでキャッシュしない
+  const effectsText = (card.effects || []).join('\n');
+  const hasTargeting = /選ぶ|選んで|1体|1枚/.test(effectsText);
+
+  if (!hasTargeting && effectInterpretCache[cacheKey]) {
+    return effectInterpretCache[cacheKey];
+  }
+
+  const userMsg = `カード名: ${card.name}
+種類: ${card.cardType || '不明'}
+文明: ${card.civilization || '-'}
+コスト: ${card.cost || '-'}
+パワー: ${card.power || '-'}
+
+効果テキスト:
+${effectsText}
+
+現在のトリガー: ${trigger}
+(cip=バトルゾーンに出た時, pig=破壊された時, cast=呪文を唱えた時, attack=攻撃時, static=常時)
+
+このカードの${trigger}効果をJSON形式のアクションリストに変換してください。`;
+
+  try {
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'x-api-key': ANTHROPIC_API_KEY,
+        'anthropic-version': '2023-06-01',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'claude-haiku-4-5',
+        max_tokens: 1024,
+        system: EFFECT_INTERPRETER_SYSTEM,
+        messages: [{ role: 'user', content: userMsg }],
+      }),
+    });
+
+    const data = await response.json();
+    if (data.error) {
+      console.error('Claude API error:', data.error);
+      return { actions: [{ type: 'no_effect', reason: 'APIエラー: ' + data.error.message }], note: '' };
+    }
+
+    const text = data.content[0].text;
+    // JSONを抽出
+    let jsonStr = text.trim();
+    const match = jsonStr.match(/\{[\s\S]*\}/);
+    if (match) jsonStr = match[0];
+
+    const parsed = JSON.parse(jsonStr);
+    if (!hasTargeting) effectInterpretCache[cacheKey] = parsed;
+    return parsed;
+  } catch (e) {
+    console.error('Effect interpret error:', e.message);
+    return { actions: [{ type: 'no_effect', reason: e.message }], note: '' };
+  }
+}
+
+app.post('/api/interpret-effect', async (req, res) => {
+  const { card, trigger, gameContext } = req.body;
+  if (!card) return res.status(400).json({ error: 'card required' });
+  const result = await interpretCardEffect(card, trigger || 'cip', gameContext || {});
+  res.json(result);
 });
 
 // カード画像プロキシ

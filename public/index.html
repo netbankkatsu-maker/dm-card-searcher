@@ -786,7 +786,7 @@
 
           let html = '<div class="results-grid">';
           for (const c of data.cards) {
-            const img = c.thumbnail ? '/api/image?url=' + encodeURIComponent(c.thumbnail) : '';
+            const img = c.thumbnail ? c.thumbnail : '';
             const displayName = c.name || '';
             html += '<div class="result-card" onclick="showCardDetail(\'' + esc(c.id) + '\')">';
             if (img) html += '<img src="' + img + '" loading="lazy" onerror="this.style.opacity=\'0.3\'">';
@@ -840,7 +840,7 @@
         if (card.error) { detail.innerHTML = '<div class="loading" style="height:100vh;"><div class="loading-text">&#9888; ' + esc(card.error) + '</div></div>'; return; }
 
         const isFav = favorites.some(f => f.id === cardId);
-        const imgUrl = card.imageUrl ? '/api/image?url=' + encodeURIComponent(card.imageUrl) : '';
+        const imgUrl = card.imageUrl || '';
         const civBadges = (card.civilization || '').split(/[\/／・]/).map(c => c.trim()).filter(Boolean).map(c => {
           const m = CIV_MAP[c] || { cls: 'civ-zero', icon: '' };
           return '<span class="civilization-badge ' + m.cls + '">' + m.icon + ' ' + esc(c) + '</span>';
@@ -1129,7 +1129,7 @@
 
         html += '<div class="deck-card-grid">';
         for (const card of deckData.cards) {
-          const thumbUrl = card.thumbnail ? '/api/image?url=' + encodeURIComponent(card.thumbnail) : '';
+          const thumbUrl = card.thumbnail || '';
           html += '<div class="deck-card-item" data-id="' + esc(card.id) + '" onclick="showCardDetail(\'' + esc(card.id) + '\')">' +
             (thumbUrl ? '<img class="deck-card-thumb" src="' + thumbUrl + '" loading="lazy" onerror="this.style.display=\'none\'">' : '') +
             '<div class="deck-card-info"><div class="deck-card-name deck-card-name-' + esc(card.id) + '">' + esc(card.id) + '</div>' +
@@ -1275,7 +1275,7 @@
 
       status.textContent = foundCards.length + '枚のカードが見つかりました';
       cardList.innerHTML = foundCards.map(c => {
-        const img = c.thumbnail ? '/api/image?url=' + encodeURIComponent(c.thumbnail) : '';
+        const img = c.thumbnail ? c.thumbnail : '';
         return '<div class="deck-card-item" onclick="showCardDetail(\'' + esc(c.id) + '\');switchMainTab(\'search\');">' +
           (img ? '<img class="deck-card-thumb" src="' + img + '" onerror="this.style.display=\'none\'">' : '') +
           '<div class="deck-card-info"><div class="deck-card-name">' + esc(c.name || c.id) + '</div>' +

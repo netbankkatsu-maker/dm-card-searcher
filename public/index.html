@@ -525,7 +525,7 @@
 
     /* ============ デュエル画面 (DM Play風) ============ */
     .duel-field {
-      display: flex; flex-direction: column; height: 100%;
+      display: flex; flex-direction: column; flex: 1; min-height: 0;
       background: radial-gradient(ellipse at 50% 30%, #193a1e 0%, #0c1f10 50%, #060c06 100%);
       overflow: hidden; padding: 0; gap: 0;
     }
@@ -1344,7 +1344,11 @@
       });
       // タブ切り替え時、検索結果エリアの内容をクリアして該当UIを描画
       if (tab === 'deck') loadDeckList();
-      if (tab === 'battle' && typeof initBattleTab === 'function') initBattleTab();
+      if (tab === 'battle' && typeof initBattleTab === 'function') {
+        // デュエル中でなければbattleTabのイントロを戻す
+        if (!window.game) { const bt = document.getElementById('battleTab'); if (bt) bt.style.display = ''; }
+        initBattleTab();
+      }
       if (tab === 'search') {
         const area = document.getElementById('resultsArea');
         if (area && !area.querySelector('#welcomeScreen') && !area.querySelector('.results-grid')) {

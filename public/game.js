@@ -1617,9 +1617,11 @@ function showShieldBreakAnim(x, y) {
 function renderDuelUI() {
   const area = document.getElementById('resultsArea');
   if (!area || !game) return;
-  // デュエル中はパディングを除去してフル高さを確保
-  area.style.padding = '0';
-  area.style.overflow = 'hidden';
+  // デュエル中: パディング除去・フレックスコンテナ化で高さを確実に確保
+  area.style.cssText = 'padding:0; overflow:hidden; display:flex; flex-direction:column;';
+  // 「デッキを作って…」テキストを非表示
+  const battleTabIntro = document.getElementById('battleTab');
+  if (battleTabIntro) battleTabIntro.style.display = 'none';
   const isPlayerTurn = game.turn === 'player';
 
   area.innerHTML = `

@@ -16,8 +16,8 @@ if (!fs.existsSync(OUTPUT_DIR)) fs.mkdirSync(OUTPUT_DIR, { recursive: true });
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36';
 
 // 軽い並列度で公式サイトに負荷をかけない
-const CONCURRENCY = 5;
-const DELAY_MS = 100;
+const CONCURRENCY = 20;
+const DELAY_MS = 50;
 
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
@@ -223,9 +223,17 @@ async function fetchAllCardDetails(cards) {
       done++;
     }
 
-    // 50件ごと or 10秒ごとに保存
+    // 50件ごと or 10秒ごとに保存（ファイルロック対策で一時ファイル経由）
     if (done % 50 === 0 || Date.now() - lastSave > 10000) {
-      fs.writeFileSync(CARDS_FILE, JSON.stringify(cardDetails));
+      try {
+        const tmpFile = CARDS_FILE + '.tmp';
+        fs.writeFileSync(tmpFile, JSON.stringify(cardDetails));
+        fs.renameSync(tmpFile, CARDS_FILE);
+      } catch (e) {
+        console.error('Save error (will retry):', e.message);
+        await sleep(500);
+        continue;
+      }
       const elapsed = Math.round((Date.now() - START_TIME) / 1000);
       const total = Object.keys(cardDetails).length;
       const remaining = cards.length - total;

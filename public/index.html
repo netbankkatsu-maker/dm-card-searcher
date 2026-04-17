@@ -520,6 +520,142 @@
       font-size: 0.8rem;
     }
 
+    /* ============ デュエル画面 ============ */
+    .duel-field {
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+      gap: 4px;
+      background: linear-gradient(180deg, #1a0a2a 0%, #0a1a2a 50%, #2a1a0a 100%);
+      padding: 4px;
+      border-radius: 8px;
+    }
+    .player-area {
+      background: rgba(0,0,0,0.3);
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      padding: 6px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .player-area.opponent { border-color: var(--accent-fire); }
+    .player-area.me { border-color: var(--accent-water); }
+    .player-info { display: flex; gap: 10px; font-size: 0.75rem; color: var(--text-secondary); padding: 2px 6px; }
+    .player-info span:first-child { font-weight: bold; color: var(--text-primary); }
+    .zone {
+      display: flex;
+      gap: 4px;
+      padding: 4px;
+      background: rgba(255,255,255,0.03);
+      border-radius: 6px;
+      min-height: 40px;
+      overflow-x: auto;
+      flex-wrap: wrap;
+    }
+    .shield-zone { border-left: 3px solid #ffcc00; }
+    .battle-zone { border-left: 3px solid #ff4444; min-height: 70px; }
+    .mana-zone { border-left: 3px solid #44cc44; min-height: 36px; }
+    .hand-zone { border-left: 3px solid #4488ff; min-height: 50px; }
+    .shield-card {
+      width: 30px; height: 42px;
+      background: linear-gradient(135deg, #ffcc00, #ff9900);
+      border-radius: 4px;
+      display: flex; align-items: center; justify-content: center;
+      color: #000;
+      font-size: 1rem;
+      cursor: pointer;
+      transition: all 0.2s;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.5);
+    }
+    .shield-card:hover { transform: translateY(-2px); box-shadow: 0 4px 8px rgba(0,0,0,0.7); }
+    .mana-card {
+      width: 26px; height: 36px;
+      border-radius: 3px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 0.75rem;
+      font-weight: bold;
+      color: white;
+      transition: transform 0.2s;
+    }
+    .mana-card.tapped { transform: rotate(90deg); opacity: 0.6; }
+    .battle-card {
+      width: 70px; min-height: 70px;
+      background: var(--bg-card);
+      border: 2px solid var(--border-color);
+      border-radius: 6px;
+      padding: 4px;
+      display: flex; flex-direction: column; justify-content: space-between;
+      font-size: 0.7rem;
+      position: relative;
+      transition: all 0.2s;
+      cursor: default;
+    }
+    .battle-card.clickable { cursor: pointer; }
+    .battle-card.clickable:hover { transform: translateY(-3px); box-shadow: 0 4px 12px rgba(68,136,255,0.5); }
+    .battle-card.tapped { transform: rotate(90deg); }
+    .battle-card.sick { opacity: 0.7; filter: saturate(0.5); }
+    .battle-card.selected { border-color: var(--accent-fire); box-shadow: 0 0 12px var(--accent-fire); }
+    .battle-zone[data-targetable="true"] .battle-card.tapped { border-color: var(--accent-fire); box-shadow: 0 0 8px var(--accent-fire); cursor: pointer; }
+    .bc-name { font-size: 0.65rem; line-height: 1.1; overflow: hidden; max-height: 2.2em; }
+    .bc-power { font-size: 0.9rem; font-weight: bold; color: var(--accent-light); }
+    .bc-kw { position: absolute; top: 2px; right: 2px; font-size: 0.7rem; }
+    .bc-breaker { position: absolute; bottom: 2px; right: 2px; background: var(--accent-fire); color: white; padding: 1px 4px; border-radius: 8px; font-size: 0.65rem; font-weight: bold; }
+    .hand-card {
+      width: 85px; min-height: 85px;
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: 6px;
+      padding: 4px;
+      display: flex; flex-direction: column;
+      font-size: 0.7rem;
+      position: relative;
+    }
+    .hc-cost { position: absolute; top: 2px; left: 2px; background: var(--accent-water); color: white; border-radius: 50%; width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; font-size: 0.8rem; font-weight: bold; }
+    .hc-name { font-size: 0.65rem; line-height: 1.1; margin-top: 18px; flex: 1; overflow: hidden; max-height: 2.2em; word-break: break-all; }
+    .hc-power { font-size: 0.75rem; font-weight: bold; color: var(--accent-light); text-align: right; }
+    .hc-actions { display: flex; gap: 2px; margin-top: 2px; }
+    .hc-actions button { flex: 1; padding: 3px 4px; font-size: 0.65rem; border: none; border-radius: 3px; background: var(--accent-water); color: white; cursor: pointer; }
+    .hc-actions button:last-child { background: var(--accent-nature); }
+    .hand-card-back {
+      width: 40px; height: 56px;
+      background: linear-gradient(135deg, #4488ff, #2266dd);
+      border-radius: 4px;
+      display: flex; align-items: center; justify-content: center;
+      color: white;
+    }
+    .duel-center {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 6px 12px;
+      background: rgba(0,0,0,0.5);
+      border-radius: 6px;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    .duel-turn-indicator { font-weight: bold; font-size: 0.9rem; }
+    .duel-end-btn { padding: 8px 16px; background: var(--accent-fire); border: none; color: white; border-radius: 6px; cursor: pointer; font-weight: bold; }
+    .duel-log { flex: 1; min-width: 150px; font-size: 0.7rem; color: var(--text-secondary); max-height: 50px; overflow-y: auto; }
+    .duel-winner { font-size: 1.5rem; font-weight: bold; color: var(--accent-light); text-align: center; padding: 10px; background: rgba(0,0,0,0.7); border-radius: 8px; width: 100%; }
+
+    .civ-fire { background: #ff4444; color: white; }
+    .civ-water { background: #4488ff; color: white; }
+    .civ-nature { background: #44cc44; color: white; }
+    .civ-light { background: #ffcc00; color: #000; }
+    .civ-darkness { background: #9944cc; color: white; }
+    .civ-zero { background: #888; color: white; }
+    .battle-card.civ-fire { border-color: #ff4444; }
+    .battle-card.civ-water { border-color: #4488ff; }
+    .battle-card.civ-nature { border-color: #44cc44; }
+    .battle-card.civ-light { border-color: #ffcc00; }
+    .battle-card.civ-darkness { border-color: #9944cc; }
+    .hand-card.civ-fire .hc-cost { background: #ff4444; }
+    .hand-card.civ-water .hc-cost { background: #4488ff; }
+    .hand-card.civ-nature .hc-cost { background: #44cc44; }
+    .hand-card.civ-light .hc-cost { background: #ffcc00; color: #000; }
+    .hand-card.civ-darkness .hc-cost { background: #9944cc; }
+
     /* レスポンシブ */
     @media (max-width: 600px) {
       .side-panel { position: fixed; top: 0; left: 0; height: 100%; z-index: 150; width: 260px; box-shadow: 4px 0 20px rgba(0,0,0,0.5); }
@@ -527,6 +663,8 @@
       .detail-header { flex-wrap: wrap; }
       .detail-header-actions { width: 100%; justify-content: flex-end; }
       .results-grid { grid-template-columns: repeat(auto-fill, minmax(90px, 1fr)); }
+      .battle-card { width: 60px; }
+      .hand-card { width: 70px; }
     }
   </style>
 </head>
@@ -538,9 +676,10 @@
     <div class="header-buttons">
       <button class="header-btn" id="tabSearch" onclick="switchMainTab('search')" style="background:var(--accent-water);color:white;border-color:var(--accent-water)">&#128269; 検索</button>
       <button class="header-btn" id="tabCamera" onclick="switchMainTab('camera')">&#128247; カメラ</button>
-      <button class="header-btn" id="tabDeck" onclick="switchMainTab('deck')">&#127183; デッキ</button>
+      <button class="header-btn" id="tabDeck" onclick="switchMainTab('deck')">&#127183; 公式デッキ</button>
+      <button class="header-btn" id="tabBattle" onclick="switchMainTab('battle')">&#9876; 対戦</button>
       <button class="header-btn" onclick="openSettings()" title="文字サイズ設定">&#9881;</button>
-      <button class="header-btn" onclick="document.getElementById('sidePanel').classList.toggle('hidden')">&#9776;</button>
+      <button class="header-btn" onclick="document.getElementById('sidePanel').classList.toggle('hidden')" title="履歴">&#9776;</button>
     </div>
   </div>
 
@@ -562,12 +701,10 @@
   <!-- カード検索タブ -->
   <div id="searchTab">
     <div class="search-area">
-      <button class="icon-btn voice-btn" id="voiceBtn" onclick="toggleVoice()" title="音声で検索">&#127908;</button>
-      <input type="text" class="search-input" id="searchInput" placeholder="カード名を入力 or マイクボタンで音声検索..."
+      <input type="text" class="search-input" id="searchInput" placeholder="カード名を入力..."
              onkeydown="if(event.key==='Enter'){doSearch();}">
       <button class="icon-btn search-btn-icon" onclick="doSearch()" title="検索">&#128269;</button>
     </div>
-    <div class="voice-status" id="voiceStatus"></div>
   </div>
 
   <!-- デッキレシピタブ -->
@@ -600,6 +737,11 @@
     </div>
   </div>
 
+  <!-- 対戦タブ -->
+  <div id="battleTab" style="display:none;">
+    <div style="padding:8px 16px;text-align:center;font-size:0.85rem;color:var(--text-secondary);">デッキを作ってAIとデュエル！</div>
+  </div>
+
   <!-- メインコンテンツ -->
   <div class="main-content">
     <div class="side-panel hidden" id="sidePanel">
@@ -612,31 +754,9 @@
 
     <div class="results-area" id="resultsArea">
       <div class="welcome-screen" id="welcomeScreen">
-        <div class="welcome-icon">&#127183;</div>
+        <div style="font-size:3rem;margin-bottom:12px;">&#127183;</div>
         <div class="welcome-title">デュエマカード検索くん</div>
-        <div class="welcome-desc">音声認識またはテキスト入力でカードを検索。効果テキストを大きく表示します。</div>
-        <div class="welcome-tips">
-          <div class="welcome-tip">
-            <div class="welcome-tip-icon">&#127908;</div>
-            <div class="welcome-tip-title">音声検索</div>
-            <div class="welcome-tip-desc">マイクボタンを押してカード名を話す</div>
-          </div>
-          <div class="welcome-tip">
-            <div class="welcome-tip-icon">&#127183;</div>
-            <div class="welcome-tip-title">デッキレシピ</div>
-            <div class="welcome-tip-desc">構築済みデッキの中身を確認</div>
-          </div>
-          <div class="welcome-tip">
-            <div class="welcome-tip-icon">&#128218;</div>
-            <div class="welcome-tip-title">キーワード解説</div>
-            <div class="welcome-tip-desc">黄色いキーワードで説明表示</div>
-          </div>
-          <div class="welcome-tip">
-            <div class="welcome-tip-icon">&#128300;</div>
-            <div class="welcome-tip-title">文字サイズ変更</div>
-            <div class="welcome-tip-desc">A+/A- で文字の大きさ調整</div>
-          </div>
-        </div>
+        <div style="color:var(--text-secondary);margin-top:8px;">カード名を入力して検索</div>
       </div>
     </div>
   </div>
@@ -1157,6 +1277,17 @@
     // ========================================
     function esc(t) { if (!t) return ''; const d = document.createElement('div'); d.textContent = t; return d.innerHTML; }
 
+    function showWelcome() {
+      const area = document.getElementById('resultsArea');
+      area.innerHTML = `
+        <div class="welcome-screen" id="welcomeScreen">
+          <div style="font-size:3rem;margin-bottom:12px;">&#127183;</div>
+          <div class="welcome-title">デュエマカード検索くん</div>
+          <div style="color:var(--text-secondary);margin-top:8px;">カード名を入力して検索</div>
+        </div>
+      `;
+    }
+
     // ========================================
     // メインタブ切り替え
     // ========================================
@@ -1164,7 +1295,7 @@
 
     function switchMainTab(tab) {
       currentMainTab = tab;
-      ['search', 'deck', 'camera'].forEach(t => {
+      ['search', 'deck', 'camera', 'battle'].forEach(t => {
         const el = document.getElementById(t + 'Tab');
         if (el) el.style.display = t === tab ? '' : 'none';
         const btn = document.getElementById('tab' + t.charAt(0).toUpperCase() + t.slice(1));
@@ -1174,7 +1305,15 @@
           btn.style.borderColor = t === tab ? 'var(--accent-water)' : '';
         }
       });
+      // タブ切り替え時、検索結果エリアの内容をクリアして該当UIを描画
       if (tab === 'deck') loadDeckList();
+      if (tab === 'battle' && typeof initBattleTab === 'function') initBattleTab();
+      if (tab === 'search') {
+        const area = document.getElementById('resultsArea');
+        if (area && !area.querySelector('#welcomeScreen') && !area.querySelector('.results-grid')) {
+          showWelcome();
+        }
+      }
     }
 
     // ========================================
@@ -1400,7 +1539,6 @@
     // ========================================
     document.addEventListener('DOMContentLoaded', () => {
       loadFontSizes();
-      initSpeechRecognition();
       renderSideList();
 
       // Escキー
@@ -1420,5 +1558,6 @@
       });
     });
   </script>
+  <script src="game.js"></script>
 </body>
 </html>

@@ -25,13 +25,13 @@ let cardDbReady = false;
 function loadPrebuiltDB() {
   const dbPath = path.join(__dirname, 'data', 'cards.json');
   if (!fs.existsSync(dbPath)) {
-    console.log('事前ビルドDBなし。dmwikiから名前リストをロードします');
-    return false;
+    console.log('事前ビルドDBなし');
+    return 0;
   }
   try {
     const data = JSON.parse(fs.readFileSync(dbPath, 'utf-8'));
     cardDb = data;
-    cardIndex = Object.values(data)
+    const prebuiltCards = Object.values(data)
       .filter(c => c.name) // 名前のあるカードのみ
       .map(c => ({
         id: c.id,
@@ -40,16 +40,17 @@ function loadPrebuiltDB() {
         nameNoDot: c.name.replace(/・/g, '').toLowerCase(),
         thumbnail: c.thumbnail || c.imageUrl || '',
       }));
+    cardIndex = prebuiltCards;
     cardDbReady = true;
-    console.log(`事前ビルドDBロード完了: ${cardIndex.length}枚のカード`);
-    return true;
+    console.log(`事前ビルドDBロード完了: ${prebuiltCards.length}枚のカード`);
+    return prebuiltCards.length;
   } catch (e) {
     console.error('事前ビルドDBのロード失敗:', e.message);
-    return false;
+    return 0;
   }
 }
 
-// フォールバック: dmwiki.netからカード名だけロード
+// dmwiki.netからカード名を追加（事前ビルドDBにないカードをカバー）
 async function loadCardNamesFromWiki() {
   try {
     console.log('dmwikiからカード名DBを読み込み中...');
@@ -68,15 +69,21 @@ async function loadCardNamesFromWiki() {
       }
     });
 
-    cardIndex = [...names].map(name => ({
-      id: null,
-      name,
-      nameLower: name.toLowerCase(),
-      nameNoDot: name.replace(/・/g, '').toLowerCase(),
-      thumbnail: '',
-    }));
+    // 事前ビルドDBにある名前はスキップ
+    const existingNames = new Set(cardIndex.map(c => c.name));
+    const wikiOnlyCards = [...names]
+      .filter(name => !existingNames.has(name))
+      .map(name => ({
+        id: null,
+        name,
+        nameLower: name.toLowerCase(),
+        nameNoDot: name.replace(/・/g, '').toLowerCase(),
+        thumbnail: '',
+      }));
+
+    cardIndex = [...cardIndex, ...wikiOnlyCards];
     cardDbReady = true;
-    console.log(`dmwiki DB完了: ${cardIndex.length}枚のカード`);
+    console.log(`dmwiki追加完了: ${wikiOnlyCards.length}枚の追加名（合計${cardIndex.length}枚）`);
   } catch (e) {
     console.error('dmwiki読み込み失敗:', e.message);
   }
@@ -103,10 +110,9 @@ function searchCardDB(keyword, limit = 30) {
   return [...exact, ...startsWith, ...contains].slice(0, limit);
 }
 
-// 起動時にDB読み込み
-if (!loadPrebuiltDB()) {
-  loadCardNamesFromWiki();
-}
+// 起動時: 事前ビルドDBをロード + dmwikiで名前を補完
+loadPrebuiltDB();
+loadCardNamesFromWiki();
 
 // カード名を高速取得（キャッシュ付き）
 async function getCardName(cardId) {

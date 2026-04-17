@@ -1674,18 +1674,6 @@ function civClassOf(civ) {
 function initBattleTab() {
   const area = document.getElementById('resultsArea');
   if (!area) return;
-  // デッキがあればマイデッキを表示、なければ新規作成
-  const decks = getDecks();
-  if (decks.length > 0) {
-    showMyDecks();
-  } else {
-    area.innerHTML = `
-      <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;padding:30px;gap:16px;">
-        <div style="font-size:3rem;">⚔</div>
-        <h2>デュエル</h2>
-        <p style="color:var(--text-secondary);text-align:center;">まずはデッキを作ろう！<br>カードを40枚集めてAIと対戦できます。</p>
-        <button onclick="newDeck()" style="padding:12px 24px;background:var(--accent-water);border:none;color:white;border-radius:8px;cursor:pointer;font-size:1.05rem;">+ 新規デッキ作成</button>
-      </div>
-    `;
-  }
+  // 公式デッキとマイデッキ両方を常に表示
+  showMyDecks();
 }

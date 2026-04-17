@@ -22,6 +22,10 @@
       --border-color: #333366;
       --glow-color: rgba(68, 136, 255, 0.3);
       --font-size-effect: 1.3rem;
+      --font-size-result-name: 0.85rem;
+      --font-size-card-name: 1.3rem;
+      --font-size-attr: 1rem;
+      --font-size-effect-title: 1rem;
     }
 
     * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -205,7 +209,7 @@
     }
     .result-card:hover { transform: translateY(-3px); box-shadow: 0 6px 20px rgba(0,0,0,0.4); border-color: var(--accent-water); }
     .result-card img { width: 100%; aspect-ratio: 0.715; object-fit: cover; display: block; }
-    .result-card-name { padding: 6px; font-size: 0.7rem; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .result-card-name { padding: 6px 4px; font-size: var(--font-size-result-name, 0.75rem); text-align: center; word-break: break-all; line-height: 1.3; }
 
     /* ===== カード詳細（全画面 説明文メイン） ===== */
     .card-detail-overlay {
@@ -262,11 +266,10 @@
 
     .detail-header-info { flex: 1; min-width: 0; }
     .detail-card-name {
-      font-size: 1.2rem;
+      font-size: var(--font-size-card-name, 1.2rem);
       font-weight: bold;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
+      word-break: break-all;
+      line-height: 1.3;
     }
     .detail-card-meta {
       font-size: 0.8rem;
@@ -358,14 +361,14 @@
       font-size: 0.85rem;
     }
     .attr-chip-label { color: var(--text-secondary); font-size: 0.7rem; }
-    .attr-chip-value { font-weight: bold; }
+    .attr-chip-value { font-weight: bold; font-size: var(--font-size-attr, 1rem); }
 
     /* 効果テキスト（メインコンテンツ） */
     .effects-area {
       flex: 1;
     }
     .effects-title {
-      font-size: 0.9rem;
+      font-size: var(--font-size-effect-title, 0.9rem);
       color: var(--accent-water);
       margin-bottom: 10px;
       font-weight: bold;
@@ -536,7 +539,23 @@
       <button class="header-btn" id="tabSearch" onclick="switchMainTab('search')" style="background:var(--accent-water);color:white;border-color:var(--accent-water)">&#128269; 検索</button>
       <button class="header-btn" id="tabCamera" onclick="switchMainTab('camera')">&#128247; カメラ</button>
       <button class="header-btn" id="tabDeck" onclick="switchMainTab('deck')">&#127183; デッキ</button>
+      <button class="header-btn" onclick="openSettings()" title="文字サイズ設定">&#9881;</button>
       <button class="header-btn" onclick="document.getElementById('sidePanel').classList.toggle('hidden')">&#9776;</button>
+    </div>
+  </div>
+
+  <!-- 設定パネル -->
+  <div id="settingsOverlay" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.7);z-index:250;justify-content:center;align-items:center;padding:16px;" onclick="if(event.target===this)closeSettings()">
+    <div style="background:var(--bg-card);border:2px solid var(--border-color);border-radius:14px;padding:20px;max-width:440px;width:100%;max-height:90vh;overflow-y:auto;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+        <h2 style="font-size:1.2rem;">&#9881; 文字サイズ設定</h2>
+        <button onclick="closeSettings()" style="background:none;border:none;color:var(--text-primary);font-size:1.5rem;cursor:pointer;">&times;</button>
+      </div>
+      <div id="settingsBody"></div>
+      <div style="display:flex;gap:8px;margin-top:16px;">
+        <button onclick="resetFontSizes()" style="flex:1;padding:8px;background:var(--bg-hover);border:1px solid var(--border-color);color:var(--text-primary);border-radius:8px;cursor:pointer;">標準に戻す</button>
+        <button onclick="closeSettings()" style="flex:1;padding:8px;background:var(--accent-water);border:none;color:white;border-radius:8px;cursor:pointer;">閉じる</button>
+      </div>
     </div>
   </div>
 
@@ -764,13 +783,19 @@
         if (data.cards.length === 0) { area.innerHTML = '<div class="loading"><div class="loading-text">「' + esc(keyword) + '」に一致するカードが見つかりませんでした</div></div>'; return; }
 
         if (data.source === 'db') {
-          // DB検索結果: カード名のみ（超高速）→ タップで詳細取得
+          // DB検索結果: ID+名前+サムネ付き（事前ビルドDB）or 名前のみ（dmwikiフォールバック）
           let html = '<div class="results-grid">';
-          for (let i = 0; i < data.cards.length; i++) {
-            const c = data.cards[i];
-            // カード名をクリックしたら名前で公式検索→詳細表示
-            html += '<div class="result-card" onclick="searchAndShowDetail(\'' + esc(c.name) + '\')">';
-            html += '<div class="result-card-name" style="padding:12px 8px;font-size:0.85rem;">' + esc(c.name) + '</div></div>';
+          for (const c of data.cards) {
+            const hasId = c.id;
+            const hasThumb = c.thumbnail;
+            const clickHandler = hasId
+              ? "showCardDetail('" + esc(c.id) + "')"
+              : "searchAndShowDetail('" + esc(c.name) + "')";
+            html += '<div class="result-card" onclick="' + clickHandler + '">';
+            if (hasThumb) {
+              html += '<img src="' + esc(c.thumbnail) + '" loading="lazy" onerror="this.style.opacity=\'0.3\'">';
+            }
+            html += '<div class="result-card-name">' + esc(c.name) + '</div></div>';
           }
           html += '</div>';
           area.innerHTML = html;
@@ -909,10 +934,38 @@
     // ========================================
     // 文字サイズ変更
     // ========================================
+    const FONT_SIZE_CONFIG = [
+      { key: 'effect', label: 'カード効果テキスト', cssVar: '--font-size-effect', default: 1.3, min: 0.8, max: 3.0 },
+      { key: 'cardName', label: 'カード名', cssVar: '--font-size-card-name', default: 1.3, min: 0.8, max: 2.5 },
+      { key: 'resultName', label: '検索結果のカード名', cssVar: '--font-size-result-name', default: 0.85, min: 0.6, max: 1.5 },
+      { key: 'attr', label: 'コスト・パワーなどの属性', cssVar: '--font-size-attr', default: 1.0, min: 0.7, max: 2.0 },
+      { key: 'effectTitle', label: '「カード効果」見出し', cssVar: '--font-size-effect-title', default: 1.0, min: 0.7, max: 1.8 },
+    ];
+
+    function loadFontSizes() {
+      const saved = JSON.parse(localStorage.getItem('dm_font_sizes') || '{}');
+      for (const cfg of FONT_SIZE_CONFIG) {
+        const val = saved[cfg.key] ?? cfg.default;
+        document.documentElement.style.setProperty(cfg.cssVar, val + 'rem');
+      }
+      effectFontSize = saved.effect ?? 1.3;
+    }
+
+    function saveFontSize(key, val) {
+      const saved = JSON.parse(localStorage.getItem('dm_font_sizes') || '{}');
+      saved[key] = val;
+      localStorage.setItem('dm_font_sizes', JSON.stringify(saved));
+      const cfg = FONT_SIZE_CONFIG.find(c => c.key === key);
+      if (cfg) document.documentElement.style.setProperty(cfg.cssVar, val + 'rem');
+      if (key === 'effect') {
+        effectFontSize = val;
+        applyFontSize();
+      }
+    }
+
     function changeFontSize(delta) {
       effectFontSize = Math.max(0.8, Math.min(3.0, effectFontSize + delta));
-      localStorage.setItem('dm_font_size', effectFontSize.toString());
-      applyFontSize();
+      saveFontSize('effect', effectFontSize);
     }
 
     function applyFontSize() {
@@ -920,6 +973,62 @@
       items.forEach(el => { el.style.fontSize = effectFontSize + 'rem'; });
       const label = document.getElementById('fontSizeLabel');
       if (label) label.textContent = Math.round(effectFontSize * 100) + '%';
+    }
+
+    // 設定パネル
+    function openSettings() {
+      const body = document.getElementById('settingsBody');
+      const saved = JSON.parse(localStorage.getItem('dm_font_sizes') || '{}');
+      body.innerHTML = FONT_SIZE_CONFIG.map(cfg => {
+        const val = saved[cfg.key] ?? cfg.default;
+        return `
+          <div style="margin-bottom:18px;padding:12px;background:var(--bg-secondary);border-radius:10px;">
+            <div style="display:flex;justify-content:space-between;margin-bottom:8px;">
+              <span style="font-weight:bold;">${cfg.label}</span>
+              <span id="sz-val-${cfg.key}" style="color:var(--accent-water);">${Math.round(val*100)}%</span>
+            </div>
+            <div style="display:flex;gap:8px;align-items:center;">
+              <button onclick="adjustFont('${cfg.key}', -0.1)" style="width:40px;height:40px;border-radius:8px;border:1px solid var(--border-color);background:var(--bg-card);color:var(--text-primary);font-size:1.2rem;cursor:pointer;">A-</button>
+              <input type="range" id="sz-slider-${cfg.key}" min="${cfg.min}" max="${cfg.max}" step="0.05" value="${val}" oninput="setFont('${cfg.key}', this.value)" style="flex:1;">
+              <button onclick="adjustFont('${cfg.key}', 0.1)" style="width:40px;height:40px;border-radius:8px;border:1px solid var(--border-color);background:var(--bg-card);color:var(--text-primary);font-size:1.2rem;cursor:pointer;">A+</button>
+            </div>
+            <div style="font-size:${val}rem;padding:8px;margin-top:8px;background:var(--bg-card);border-radius:6px;text-align:center;" id="sz-preview-${cfg.key}">サンプル: ABCあいう123</div>
+          </div>`;
+      }).join('');
+      document.getElementById('settingsOverlay').style.display = 'flex';
+    }
+
+    function closeSettings() {
+      document.getElementById('settingsOverlay').style.display = 'none';
+    }
+
+    function setFont(key, val) {
+      const v = parseFloat(val);
+      saveFontSize(key, v);
+      const valEl = document.getElementById('sz-val-' + key);
+      const previewEl = document.getElementById('sz-preview-' + key);
+      if (valEl) valEl.textContent = Math.round(v*100) + '%';
+      if (previewEl) previewEl.style.fontSize = v + 'rem';
+    }
+
+    function adjustFont(key, delta) {
+      const saved = JSON.parse(localStorage.getItem('dm_font_sizes') || '{}');
+      const cfg = FONT_SIZE_CONFIG.find(c => c.key === key);
+      const cur = saved[key] ?? cfg.default;
+      const newVal = Math.max(cfg.min, Math.min(cfg.max, cur + delta));
+      const slider = document.getElementById('sz-slider-' + key);
+      if (slider) slider.value = newVal;
+      setFont(key, newVal);
+    }
+
+    function resetFontSizes() {
+      localStorage.removeItem('dm_font_sizes');
+      for (const cfg of FONT_SIZE_CONFIG) {
+        document.documentElement.style.setProperty(cfg.cssVar, cfg.default + 'rem');
+      }
+      effectFontSize = 1.3;
+      applyFontSize();
+      openSettings(); // reload panel
     }
 
     // ========================================
@@ -1290,6 +1399,7 @@
     // 初期化
     // ========================================
     document.addEventListener('DOMContentLoaded', () => {
+      loadFontSizes();
       initSpeechRecognition();
       renderSideList();
 

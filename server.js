@@ -1,6 +1,7 @@
 const express = require('express');
 const cheerio = require('cheerio');
 const path = require('path');
+const fs = require('fs');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -10,18 +11,48 @@ const GOOGLE_VISION_API_KEY = process.env.GOOGLE_VISION_API_KEY || 'AIzaSyBOi7ZL
 app.use(express.static(path.join(__dirname, 'public')));
 app.use(express.json({ limit: '10mb' }));
 
-// カード名キャッシュ（サーバーメモリ上）
+// カード詳細キャッシュ（動的に蓄積）
+const cardDetailCache = {};
 const cardNameCache = {};
 
 // ========================================
-// 全カード名DB（dmwiki.netから起動時にロード）
+// 事前ビルドされたカードDB（data/cards.json）
 // ========================================
-let allCardNames = []; // { name: "ヘブンズ・ゲート", nameNormalized: "へぶんずげーと" }
+let cardDb = {}; // id -> { id, name, imageUrl, effects, civilization, ... }
+let cardIndex = []; // [{ id, name, nameLower, nameNoDot, thumbnail, imageUrl }]
 let cardDbReady = false;
 
-async function loadCardDatabase() {
+function loadPrebuiltDB() {
+  const dbPath = path.join(__dirname, 'data', 'cards.json');
+  if (!fs.existsSync(dbPath)) {
+    console.log('事前ビルドDBなし。dmwikiから名前リストをロードします');
+    return false;
+  }
   try {
-    console.log('カード名データベースを読み込み中...');
+    const data = JSON.parse(fs.readFileSync(dbPath, 'utf-8'));
+    cardDb = data;
+    cardIndex = Object.values(data)
+      .filter(c => c.name) // 名前のあるカードのみ
+      .map(c => ({
+        id: c.id,
+        name: c.name,
+        nameLower: c.name.toLowerCase(),
+        nameNoDot: c.name.replace(/・/g, '').toLowerCase(),
+        thumbnail: c.thumbnail || c.imageUrl || '',
+      }));
+    cardDbReady = true;
+    console.log(`事前ビルドDBロード完了: ${cardIndex.length}枚のカード`);
+    return true;
+  } catch (e) {
+    console.error('事前ビルドDBのロード失敗:', e.message);
+    return false;
+  }
+}
+
+// フォールバック: dmwiki.netからカード名だけロード
+async function loadCardNamesFromWiki() {
+  try {
+    console.log('dmwikiからカード名DBを読み込み中...');
     const resp = await fetch('https://dmwiki.net/?cmd=list', {
       headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' }
     });
@@ -31,54 +62,51 @@ async function loadCardDatabase() {
     const names = new Set();
     $('a').each((i, el) => {
       const text = $(el).text().trim();
-      // 《カード名》形式のリンクを抽出
       if (text.startsWith('《') && text.endsWith('》')) {
         const name = text.slice(1, -1);
-        if (name.length >= 2 && name.length <= 50) {
-          names.add(name);
-        }
+        if (name.length >= 2 && name.length <= 50) names.add(name);
       }
     });
 
-    allCardNames = [...names].map(name => ({
+    cardIndex = [...names].map(name => ({
+      id: null,
       name,
       nameLower: name.toLowerCase(),
       nameNoDot: name.replace(/・/g, '').toLowerCase(),
+      thumbnail: '',
     }));
-
     cardDbReady = true;
-    console.log(`カード名DB完了: ${allCardNames.length}枚のカード`);
+    console.log(`dmwiki DB完了: ${cardIndex.length}枚のカード`);
   } catch (e) {
-    console.error('カード名DB読み込み失敗:', e.message);
+    console.error('dmwiki読み込み失敗:', e.message);
   }
 }
 
-// カード名DBからあいまい検索（超高速・メモリ内）
+// カードDBをあいまい検索（超高速・メモリ内）
 function searchCardDB(keyword, limit = 30) {
   if (!cardDbReady) return [];
   const kw = keyword.toLowerCase();
   const kwNoDot = kw.replace(/・/g, '');
 
-  // 完全一致 → 前方一致 → 部分一致の順に優先
-  const exact = [];
-  const startsWith = [];
-  const contains = [];
+  const exact = [], startsWith = [], contains = [];
 
-  for (const card of allCardNames) {
+  for (const card of cardIndex) {
     if (card.nameLower === kw || card.nameNoDot === kwNoDot) {
-      exact.push(card.name);
+      exact.push(card);
     } else if (card.nameLower.startsWith(kw) || card.nameNoDot.startsWith(kwNoDot)) {
-      startsWith.push(card.name);
+      startsWith.push(card);
     } else if (card.nameLower.includes(kw) || card.nameNoDot.includes(kwNoDot)) {
-      contains.push(card.name);
+      contains.push(card);
     }
   }
 
   return [...exact, ...startsWith, ...contains].slice(0, limit);
 }
 
-// 起動時にDB読み込み開始
-loadCardDatabase();
+// 起動時にDB読み込み
+if (!loadPrebuiltDB()) {
+  loadCardNamesFromWiki();
+}
 
 // カード名を高速取得（キャッシュ付き）
 async function getCardName(cardId) {
@@ -171,7 +199,7 @@ async function searchCards(keyword) {
   return cards;
 }
 
-// カード検索API（高速版：メモリDBで即座にカード名を返す）
+// カード検索API（高速版：メモリDBで即座にID+名前+サムネを返す）
 app.get('/api/search', async (req, res) => {
   try {
     const keyword = req.query.keyword || '';
@@ -179,16 +207,15 @@ app.get('/api/search', async (req, res) => {
       return res.json({ cards: [] });
     }
 
-    // ステップ1: メモリ内カード名DBで即座に検索（超高速）
+    // ステップ1: メモリ内DBで即座に検索（超高速）
     const dbResults = searchCardDB(keyword.trim());
 
     if (dbResults.length > 0) {
-      // カード名だけ即座に返す（画像なし・IDなし）
-      // フロントでカード名をタップしたら公式サイトから詳細を取得
-      const cards = dbResults.map(name => ({
-        name,
-        id: null, // IDは後で取得
-        thumbnail: null,
+      // ID、名前、サムネ全部即座に返す
+      const cards = dbResults.map(c => ({
+        id: c.id,
+        name: c.name,
+        thumbnail: c.thumbnail,
       }));
       return res.json({ cards, source: 'db' });
     }
@@ -211,7 +238,6 @@ app.get('/api/search', async (req, res) => {
 
     res.json({ cards: limitedCards, source: 'official' });
 
-    // バックグラウンドでキャッシュを温める
     for (const card of limitedCards) {
       if (!cardNameCache[card.id]) {
         getCardName(card.id).catch(() => {});
@@ -223,14 +249,21 @@ app.get('/api/search', async (req, res) => {
   }
 });
 
-// カード名から公式サイトで検索してIDを取得するAPI
+// カード名から検索してIDを取得するAPI（DBに優先、なければ公式サイト）
 app.get('/api/search-by-name', async (req, res) => {
   try {
     const name = req.query.name || '';
     if (!name.trim()) return res.json({ cards: [] });
 
+    // DB検索で完全一致を探す
+    const dbResults = searchCardDB(name.trim());
+    const exact = dbResults.find(c => c.name === name.trim());
+    if (exact && exact.id) {
+      return res.json({ id: exact.id, name: exact.name, thumbnail: exact.thumbnail });
+    }
+
+    // フォールバック: 公式サイト
     const cards = await searchCards(name.trim());
-    // 最初の1件だけ返す
     if (cards.length > 0) {
       const card = cards[0];
       card.name = name;
@@ -258,6 +291,17 @@ app.get('/api/cardname/:id', async (req, res) => {
 app.get('/api/card/:id', async (req, res) => {
   try {
     const id = req.params.id;
+
+    // 事前ビルドDBから即返す
+    if (cardDb[id] && cardDb[id].name && cardDb[id].effects) {
+      return res.json(cardDb[id]);
+    }
+
+    // 動的キャッシュから
+    if (cardDetailCache[id]) {
+      return res.json(cardDetailCache[id]);
+    }
+
     const url = `https://dm.takaratomy.co.jp/card/detail/?id=${encodeURIComponent(id)}`;
     const response = await fetch(url, {
       headers: {
@@ -385,6 +429,8 @@ app.get('/api/card/:id', async (req, res) => {
       effects,
     };
 
+    // 動的キャッシュに保存
+    cardDetailCache[id] = cardData;
     res.json(cardData);
   } catch (error) {
     console.error('Card detail error:', error.message);

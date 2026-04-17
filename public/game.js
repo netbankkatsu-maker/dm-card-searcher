@@ -248,31 +248,143 @@ function saveCurrentDeck() {
   alert('保存しました！');
 }
 
-function showMyDecks() {
+async function showMyDecks() {
   const decks = getDecks();
   const area = document.getElementById('resultsArea');
   area.innerHTML = `
     <div style="padding:16px;">
-      <div style="display:flex;justify-content:space-between;margin-bottom:16px;">
-        <h2>📂 マイデッキ</h2>
-        <button onclick="newDeck()" style="padding:8px 16px;background:var(--accent-water);border:none;color:white;border-radius:6px;cursor:pointer;">+ 新規作成</button>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:8px;">
+        <h2>⚔ 対戦</h2>
+        <button onclick="newDeck()" style="padding:8px 16px;background:var(--accent-water);border:none;color:white;border-radius:6px;cursor:pointer;">+ 新規デッキ作成</button>
       </div>
-      ${decks.length === 0 ? '<div style="color:var(--text-secondary);">デッキがまだありません</div>' : ''}
-      <div style="display:flex;flex-direction:column;gap:10px;">
-        ${decks.map(d => `
-          <div style="background:var(--bg-card);border:1px solid var(--border-color);border-radius:10px;padding:14px;">
-            <div style="font-weight:bold;font-size:1.1rem;">${d.name}</div>
-            <div style="color:var(--text-secondary);font-size:0.85rem;margin-top:4px;">${d.cards.reduce((s,c)=>s+c.count,0)}枚</div>
-            <div style="display:flex;gap:8px;margin-top:10px;">
-              <button onclick='editDeck("${d.id}")' style="padding:6px 14px;background:var(--bg-hover);border:1px solid var(--border-color);color:var(--text-primary);border-radius:6px;cursor:pointer;">✏ 編集</button>
-              <button onclick='startDuelWithDeck("${d.id}")' style="padding:6px 14px;background:var(--accent-fire);border:none;color:white;border-radius:6px;cursor:pointer;">⚔ デュエル</button>
-              <button onclick='deleteDeck("${d.id}")' style="padding:6px 14px;background:var(--bg-hover);border:1px solid var(--accent-fire);color:var(--accent-fire);border-radius:6px;cursor:pointer;margin-left:auto;">削除</button>
+
+      <div style="margin-bottom:18px;">
+        <h3 style="font-size:1rem;color:var(--accent-light);margin-bottom:8px;">📂 マイデッキ</h3>
+        ${decks.length === 0 ? '<div style="color:var(--text-secondary);font-size:0.85rem;">自作デッキがまだありません</div>' : ''}
+        <div style="display:flex;flex-direction:column;gap:8px;">
+          ${decks.map(d => `
+            <div style="background:var(--bg-card);border:1px solid var(--border-color);border-radius:10px;padding:12px;">
+              <div style="font-weight:bold;">${d.name}</div>
+              <div style="color:var(--text-secondary);font-size:0.8rem;margin-top:2px;">${d.cards.reduce((s,c)=>s+c.count,0)}枚</div>
+              <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap;">
+                <button onclick='editDeck("${d.id}")' style="padding:5px 12px;background:var(--bg-hover);border:1px solid var(--border-color);color:var(--text-primary);border-radius:6px;cursor:pointer;font-size:0.85rem;">✏ 編集</button>
+                <button onclick='startDuelWithDeck("${d.id}")' style="padding:5px 12px;background:var(--accent-fire);border:none;color:white;border-radius:6px;cursor:pointer;font-size:0.85rem;">⚔ デュエル</button>
+                <button onclick='deleteDeck("${d.id}")' style="padding:5px 12px;background:var(--bg-hover);border:1px solid var(--accent-fire);color:var(--accent-fire);border-radius:6px;cursor:pointer;margin-left:auto;font-size:0.85rem;">削除</button>
+              </div>
             </div>
-          </div>
-        `).join('')}
+          `).join('')}
+        </div>
+      </div>
+
+      <div>
+        <h3 style="font-size:1rem;color:var(--accent-light);margin-bottom:8px;">🏆 公式デッキですぐ対戦</h3>
+        <div style="color:var(--text-secondary);font-size:0.75rem;margin-bottom:8px;">40枚未満のデッキは不足分を自動補完します</div>
+        <div id="officialDeckList" style="display:flex;flex-direction:column;gap:8px;">
+          <div class="loading" style="padding:20px;"><div class="loading-spinner"></div><div class="loading-text">公式デッキを読込中...</div></div>
+        </div>
       </div>
     </div>
   `;
+
+  try {
+    const resp = await fetch('/api/decks');
+    const data = await resp.json();
+    const html = (data.decks || []).map(d => `
+      <div style="background:var(--bg-card);border:1px solid var(--border-color);border-radius:10px;padding:12px;">
+        <div style="font-weight:bold;">${d.name}</div>
+        <div style="color:var(--text-secondary);font-size:0.8rem;margin-top:2px;">${d.type} / ${d.year}</div>
+        <div style="display:flex;gap:6px;margin-top:8px;">
+          <button onclick='startDuelWithOfficialDeck("${d.code}", "${(d.name||'').replace(/"/g,'&quot;')}")' style="padding:5px 12px;background:var(--accent-fire);border:none;color:white;border-radius:6px;cursor:pointer;font-size:0.85rem;">⚔ デュエル</button>
+          <button onclick='importOfficialDeck("${d.code}")' style="padding:5px 12px;background:var(--accent-water);border:none;color:white;border-radius:6px;cursor:pointer;font-size:0.85rem;">📥 マイデッキに取込</button>
+        </div>
+      </div>
+    `).join('');
+    document.getElementById('officialDeckList').innerHTML = html;
+  } catch (e) {
+    document.getElementById('officialDeckList').innerHTML = '<div style="color:var(--text-secondary);">公式デッキの取得に失敗しました</div>';
+  }
+}
+
+// 公式デッキのカードIDを取得してDuelに使う
+async function startDuelWithOfficialDeck(code, name) {
+  const area = document.getElementById('resultsArea');
+  area.innerHTML = `<div class="loading"><div class="loading-spinner"></div><div class="loading-text">「${name}」を読込中...</div></div>`;
+
+  try {
+    const resp = await fetch('/api/deck/' + encodeURIComponent(code));
+    const data = await resp.json();
+    if (!data.cards || data.cards.length === 0) { alert('デッキが読み込めません'); showMyDecks(); return; }
+
+    // 40枚未満の場合は同じカードを繰り返して埋める（シンプル戦略）
+    let cards = data.cards.map(c => ({ id: c.id, name: '', thumbnail: c.thumbnail, count: 1 }));
+    const total = cards.length;
+    if (total < DECK_SIZE) {
+      // 不足分を補完（循環）
+      let i = 0;
+      while (cards.reduce((s, c) => s + c.count, 0) < DECK_SIZE) {
+        if (cards[i].count < MAX_COPIES) cards[i].count++;
+        i = (i + 1) % cards.length;
+        if (i === 0 && cards.every(c => c.count >= MAX_COPIES)) break;
+      }
+    }
+
+    const fakeDeck = { id: 'official_' + code, name, cards };
+    // 難易度選択→デュエル開始
+    const difficulty = await selectDifficulty();
+    if (!difficulty) { showMyDecks(); return; }
+
+    area.innerHTML = `<div class="loading"><div class="loading-spinner"></div><div class="loading-text">デッキを準備中...</div></div>`;
+    const playerCards = await loadDeckCards(fakeDeck);
+    if (!playerCards || playerCards.length === 0) { alert('カード読み込み失敗'); showMyDecks(); return; }
+    const aiCards = JSON.parse(JSON.stringify(playerCards));
+    // インスタンスIDをAI用に振り直し
+    aiCards.forEach(c => c.instanceId = Math.random().toString(36).substr(2, 9));
+
+    initDuel(playerCards, aiCards, difficulty);
+  } catch (e) {
+    alert('エラー: ' + e.message);
+    showMyDecks();
+  }
+}
+
+// 公式デッキをマイデッキにインポート
+async function importOfficialDeck(code) {
+  try {
+    const resp = await fetch('/api/deck/' + encodeURIComponent(code));
+    const data = await resp.json();
+    if (!data.cards || data.cards.length === 0) { alert('デッキが読み込めません'); return; }
+
+    // カード名を取得
+    const nameFetches = await Promise.all(data.cards.slice(0, 40).map(async c => {
+      try {
+        const r = await fetch('/api/cardname/' + encodeURIComponent(c.id));
+        const j = await r.json();
+        return { id: c.id, name: j.name || c.id, thumbnail: c.thumbnail, count: 1 };
+      } catch (e) {
+        return { id: c.id, name: c.id, thumbnail: c.thumbnail, count: 1 };
+      }
+    }));
+
+    // 40枚未満は繰り返し
+    let cards = nameFetches;
+    let i = 0;
+    while (cards.reduce((s, c) => s + c.count, 0) < DECK_SIZE && cards.length > 0) {
+      if (cards[i].count < MAX_COPIES) cards[i].count++;
+      i = (i + 1) % cards.length;
+      if (cards.every(c => c.count >= MAX_COPIES)) break;
+    }
+
+    currentDeck = {
+      id: 'deck_' + Date.now(),
+      name: data.name,
+      cards,
+    };
+    saveDeck(currentDeck);
+    alert(`「${data.name}」をマイデッキに取り込みました`);
+    showMyDecks();
+  } catch (e) {
+    alert('エラー: ' + e.message);
+  }
 }
 
 function newDeck() {

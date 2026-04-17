@@ -529,7 +529,7 @@
       background: radial-gradient(ellipse at 50% 30%, #193a1e 0%, #0c1f10 50%, #060c06 100%);
       overflow: hidden; padding: 0; gap: 0;
     }
-    .player-area { display: flex; flex-direction: column; border: none; padding: 0; }
+    .player-area { display: flex; flex-direction: column; border: none; padding: 0; flex: 1; min-height: 0; position: relative; overflow: hidden; }
     .player-info-bar {
       display: flex; align-items: center; gap: 6px;
       padding: 3px 8px; background: rgba(0,0,0,0.55);
@@ -546,7 +546,20 @@
     .shield-zone { background: rgba(255,204,0,0.04); border-bottom: 1px solid rgba(255,204,0,0.15); min-height: 58px; }
     .battle-zone { background: rgba(255,68,68,0.04); border-top: 1px solid rgba(255,68,68,0.12); border-bottom: 1px solid rgba(255,68,68,0.12); min-height: 96px; flex: 1; }
     .mana-zone { background: rgba(68,204,68,0.04); border-top: 1px solid rgba(68,204,68,0.12); border-bottom: 1px solid rgba(68,204,68,0.12); min-height: 46px; }
-    .hand-zone { background: rgba(68,136,255,0.06); border-top: 1px solid rgba(68,136,255,0.18); min-height: 168px; padding: 24px 8px 8px; overflow-x: auto; overflow-y: hidden; -webkit-overflow-scrolling: touch; }
+    .hand-zone {
+      position: absolute; bottom: 0; left: 0; right: 0; z-index: 8;
+      background: rgba(5,12,35,0.88); backdrop-filter: blur(6px);
+      border-top: 1px solid rgba(68,136,255,0.3);
+      min-height: 0; padding: 8px 8px 6px;
+      overflow-x: auto; overflow-y: hidden;
+      -webkit-overflow-scrolling: touch;
+      display: flex; align-items: flex-end; gap: 5px; flex-wrap: nowrap;
+    }
+    .player-area.opponent .hand-zone {
+      bottom: auto; top: 0;
+      border-top: none; border-bottom: 1px solid rgba(68,136,255,0.3);
+      align-items: flex-start;
+    }
 
     /* カード裏面 (実際のデュエマ風) */
     .card-back-design {
@@ -1314,6 +1327,11 @@
 
     function switchMainTab(tab) {
       currentMainTab = tab;
+      // 対戦タブ以外ではresultsAreaのスタイルを戻す
+      if (tab !== 'battle') {
+        const area = document.getElementById('resultsArea');
+        if (area) { area.style.padding = ''; area.style.overflow = ''; }
+      }
       ['search', 'deck', 'camera', 'battle'].forEach(t => {
         const el = document.getElementById(t + 'Tab');
         if (el) el.style.display = t === tab ? '' : 'none';

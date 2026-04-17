@@ -1617,6 +1617,9 @@ function showShieldBreakAnim(x, y) {
 function renderDuelUI() {
   const area = document.getElementById('resultsArea');
   if (!area || !game) return;
+  // デュエル中はパディングを除去してフル高さを確保
+  area.style.padding = '0';
+  area.style.overflow = 'hidden';
   const isPlayerTurn = game.turn === 'player';
 
   area.innerHTML = `

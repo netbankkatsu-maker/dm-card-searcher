@@ -22,12 +22,25 @@ function parseKeywords(card) {
     cannotAttackCreature: false,
     poweredBreaker: false,
     muteCreature: false, // マッハファイター
+    untouchable: false, // アンタッチャブル
+    jirasic: false, // ジャストダイバー
+    exLife: false, // EXライフ
+    guardMan: false, // ガードマン
+    unblockable: false, // アンブロッカブル
+    // cip効果の簡易パース（APIなしで動く定型）
+    simpleCip: null,
+    simplePig: null,
   };
 
   if (/ブロッカー/.test(text)) keywords.blocker = true;
   if (/スピードアタッカー/.test(text)) keywords.speedAttacker = true;
   if (/S・トリガー|シールド・トリガー/.test(text)) keywords.shieldTrigger = true;
   if (/スレイヤー/.test(text)) keywords.slayer = true;
+  if (/アンタッチャブル/.test(text)) keywords.untouchable = true;
+  if (/ジャストダイバー/.test(text)) keywords.jirasic = true;
+  if (/EXライフ/.test(text)) keywords.exLife = true;
+  if (/ガードマン/.test(text)) keywords.guardMan = true;
+  if (/ブロックされない/.test(text)) keywords.unblockable = true;
 
   if (/Q・ブレイカー|クワトロ・ブレイカー/.test(text)) keywords.breaker = 4;
   else if (/T・ブレイカー|トリプル・ブレイカー/.test(text)) keywords.breaker = 3;
@@ -38,6 +51,26 @@ function parseKeywords(card) {
   if (/このクリーチャーは、?プレイヤーを攻撃できない|プレイヤーは攻撃できない/.test(text)) keywords.cannotAttackPlayer = true;
   if (/クリーチャーを攻撃できない/.test(text)) keywords.cannotAttackCreature = true;
   if (/マッハファイター/.test(text)) keywords.muteCreature = true;
+
+  // APIなしでも動くシンプルなcip効果パーサー
+  // 「バトルゾーンに出た時、カードを1枚引く」など
+  const drawMatch = text.match(/(?:バトルゾーンに出た時|出た時)[^。]*?(?:自分は|)カードを(\d+|[一二三四五])枚[^。]*?引く/);
+  if (drawMatch) {
+    const num = parseInt(drawMatch[1].replace(/[一二三四五]/, m => ({'一':1,'二':2,'三':3,'四':4,'五':5}[m]))) || 1;
+    keywords.simpleCip = { type: 'draw', who: 'self', count: num };
+  }
+
+  // 「バトルゾーンに出た時、相手の〜を破壊する」
+  const destroyMatch = text.match(/(?:バトルゾーンに出た時|出た時)[^。]*?相手のコスト(\d+)以下の(?:クリーチャー|)(?:を|を1体)?破壊する/);
+  if (destroyMatch && !keywords.simpleCip) {
+    keywords.simpleCip = { type: 'destroy_choose', side: 'enemy', count: 1, criteria: { cost_max: parseInt(destroyMatch[1]) } };
+  }
+
+  // 「パワー〜以下の」
+  const powerDestroyMatch = text.match(/(?:バトルゾーンに出た時|出た時)[^。]*?相手のパワー(\d+)以下の(?:クリーチャー|)(?:を|を1体)?破壊する/);
+  if (powerDestroyMatch && !keywords.simpleCip) {
+    keywords.simpleCip = { type: 'destroy_choose', side: 'enemy', count: 1, criteria: { power_max: parseInt(powerDestroyMatch[1]) } };
+  }
 
   return keywords;
 }
@@ -564,6 +597,10 @@ function startTurn() {
   player.battleZone.forEach(c => {
     c.tapped = false;
     c.summoningSickness = false; // ターン開始時に解除
+    // ジャストダイバーは自分の次のターン開始時に解除
+    if (c.keywords?.jirasic && c._jirasicActive) {
+      c._jirasicActive = false;
+    }
   });
 
   // 最初のターンはドローしない
@@ -669,6 +706,7 @@ async function summonCreature(who, handIdx) {
     ...card,
     tapped: false,
     summoningSickness: !card.keywords.speedAttacker,
+    _jirasicActive: card.keywords?.jirasic, // ジャストダイバー有効フラグ
   };
   p.battleZone.push(instance);
   addLog(`${who === 'player' ? 'あなた' : 'AI'}が${card.name}を召喚`);
@@ -711,12 +749,24 @@ let effectCache = {}; // クライアント側キャッシュ
 
 async function triggerEffect(card, trigger, owner) {
   if (!card.effects || card.effects.length === 0) return;
-  // 解釈不要なほど単純なカードをスキップ（キーワードのみのケース）
   const effectsText = card.effects.join('\n');
-  const simpleOnly = /^(ブロッカー|スピードアタッカー|W・ブレイカー|T・ブレイカー|Q・ブレイカー|スレイヤー|シールド・トリガー|S・トリガー|[　\s,、]+)+$/.test(effectsText.trim());
+  const simpleOnly = /^(ブロッカー|スピードアタッカー|W・ブレイカー|T・ブレイカー|Q・ブレイカー|スレイヤー|シールド・トリガー|S・トリガー|アンタッチャブル|アンブロッカブル|[　\s,、]+)+$/.test(effectsText.trim());
   if (simpleOnly) return;
 
-  // キャッシュキー
+  // 1. APIなしでも動くシンプル効果を優先実行
+  if (trigger === 'cip' && card.keywords?.simpleCip) {
+    addLog(`[${card.name}の効果]`);
+    await executeAction(card.keywords.simpleCip, owner, card);
+    renderDuelUI();
+    await wait(300);
+    return;
+  }
+  if (trigger === 'pig' && card.keywords?.simplePig) {
+    await executeAction(card.keywords.simplePig, owner, card);
+    return;
+  }
+
+  // 2. Claude APIで解釈（APIキーがない場合は no_effect が返る）
   const cacheKey = (card.id || card.name) + '::' + trigger;
   let result = effectCache[cacheKey];
 
@@ -743,7 +793,7 @@ async function triggerEffect(card, trigger, owner) {
         effectCache[cacheKey] = result;
       }
     } catch (e) {
-      addLog(`効果解釈エラー: ${e.message}`);
+      // APIエラーは無視（ゲームは続行）
       return;
     }
   }
@@ -1115,9 +1165,17 @@ function attackCreature(instanceId) {
   const attacker = game.player.battleZone.find(c => c.instanceId === game.selectedAttacker);
   const defender = game.ai.battleZone.find(c => c.instanceId === instanceId);
   if (!attacker || !defender) return;
-  if (!defender.tapped) {
-    // タップされていない相手は攻撃できない（ブロッカー除く）
-    alert('タップされていないクリーチャーは攻撃できません');
+  if (!defender.tapped && !attacker.keywords.muteCreature) {
+    // マッハファイター以外は未タップクリーチャーを攻撃できない
+    alert('タップされていないクリーチャーは攻撃できません（マッハファイター以外）');
+    return;
+  }
+  if (defender.keywords?.untouchable) {
+    alert('このクリーチャーはアンタッチャブル（選べません）');
+    return;
+  }
+  if (defender.keywords?.jirasic) {
+    alert('このクリーチャーはジャストダイバー中です');
     return;
   }
   if (attacker.keywords.cannotAttackCreature) {
@@ -1141,8 +1199,8 @@ function executeAttack(attackerOwner, attacker, targetType, targetIdx) {
   attacker.tapped = true;
   addLog(`${attacker.name}が攻撃`);
 
-  // ブロッカー処理（防御側）
-  if (targetType !== 'creature') {
+  // ブロッカー処理（アンブロッカブルはスキップ、攻撃対象がクリーチャーならスキップ）
+  if (targetType !== 'creature' && !attacker.keywords?.unblockable) {
     const blocker = findBlocker(defenderOwner);
     if (blocker) {
       if (attackerOwner === 'ai' && defenderOwner === 'player') {
@@ -1177,6 +1235,9 @@ function executeAttack(attackerOwner, attacker, targetType, targetIdx) {
 function findBlocker(who) {
   return game[who].battleZone.find(c => c.keywords.blocker && !c.tapped);
 }
+
+// ジャストダイバー攻撃側のブロック無効は攻撃側に適用
+// (既にunblockableで対応、ジャストダイバーは攻撃時ではなく「出た直後に選ばれない」効果)
 
 function shouldAiBlock(attacker, blocker) {
   // AIのブロック判断
@@ -1402,8 +1463,10 @@ function decideAiAttack(attacker) {
   if (attacker.keywords.cannotAttackPlayer && attacker.keywords.cannotAttackCreature) return null;
   const canAttackP = !attacker.keywords.cannotAttackPlayer;
   const canAttackC = !attacker.keywords.cannotAttackCreature;
-  const tappedEnemies = game.player.battleZone.filter(c => c.tapped);
+  const tappedEnemies = game.player.battleZone.filter(c => c.tapped && !c.keywords?.untouchable);
+  const untappedEnemies = game.player.battleZone.filter(c => !c.tapped && !c.keywords?.untouchable);
   const playerShields = game.player.shields.length;
+  const playerBlockers = game.player.battleZone.filter(c => !c.tapped && c.keywords?.blocker);
 
   if (game.difficulty === 'easy') {
     // ランダムな判断
@@ -1417,27 +1480,43 @@ function decideAiAttack(attacker) {
     return null;
   }
 
-  if (game.difficulty === 'normal' || game.difficulty === 'hard') {
-    // ダイレクトアタック可能なら勝ち
-    if (canAttackP && playerShields === 0) return { target: 'direct' };
+  // 普通・強い共通ロジック
+  // ダイレクトアタック可能なら勝ち
+  if (canAttackP && playerShields === 0) return { target: 'direct' };
 
-    // タップされた強い相手を優先破壊
-    const beatable = tappedEnemies.filter(t => t.power < attacker.power && canAttackC);
+  // 強い相手（未タップでパワー勝ち）に攻撃 → ハード限定
+  if (game.difficulty === 'hard' && canAttackC) {
+    // 未タップで倒せる相手（攻撃可能ルールは本来タップのみだが、ハードはブロッカー処理で狙う）
+    const strongTapped = tappedEnemies.filter(t => t.power < attacker.power);
+    if (strongTapped.length > 0) {
+      strongTapped.sort((a, b) => b.power - a.power);
+      return { target: 'creature', instanceId: strongTapped[0].instanceId };
+    }
+  }
+
+  // 普通: タップされたクリーチャーで倒せるのを優先
+  if (canAttackC) {
+    const beatable = tappedEnemies.filter(t => t.power < attacker.power);
     if (beatable.length > 0) {
       beatable.sort((a, b) => b.power - a.power);
       return { target: 'creature', instanceId: beatable[0].instanceId };
     }
-
-    // シールドを積極的に攻撃
-    if (canAttackP && playerShields > 0) {
-      return { target: 'shield' };
-    }
-
-    if (canAttackC && tappedEnemies.length > 0) {
-      return { target: 'creature', instanceId: tappedEnemies[0].instanceId };
-    }
-    if (canAttackP) return { target: 'shield' };
   }
+
+  // ブロッカーを警戒してアタッカーを残す判断（ハード）
+  if (game.difficulty === 'hard' && playerBlockers.length > 0 && canAttackP) {
+    // アタッカーが弱すぎるなら温存
+    const strongestBlocker = playerBlockers.reduce((best, b) => b.power > (best?.power || 0) ? b : best, null);
+    if (strongestBlocker && attacker.power <= strongestBlocker.power && tappedEnemies.length === 0) {
+      // 攻撃しても損をするので待つ
+      return null;
+    }
+  }
+
+  // シールドを積極的に攻撃
+  if (canAttackP && playerShields > 0) return { target: 'shield' };
+
+  if (canAttackC && tappedEnemies.length > 0) return { target: 'creature', instanceId: tappedEnemies[0].instanceId };
 
   return null;
 }
@@ -1463,6 +1542,49 @@ function renderDuelUI() {
       ${renderPlayerArea('player', true)}
     </div>
   `;
+}
+
+// カード効果をポップアップで表示
+function showCardEffectPopup(instanceId, ownerKey) {
+  let card = null;
+  // バトルゾーン、手札、マナ、墓地から探す
+  for (const who of ['player', 'ai']) {
+    const p = game[who];
+    const inBz = p.battleZone.find(c => c.instanceId === instanceId);
+    if (inBz) { card = inBz; break; }
+    const inHand = p.hand.find(c => c.instanceId === instanceId);
+    if (inHand) { card = inHand; break; }
+  }
+  if (!card) return;
+
+  const overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.85);z-index:500;display:flex;justify-content:center;align-items:center;padding:16px;';
+  overlay.onclick = (e) => { if (e.target === overlay) document.body.removeChild(overlay); };
+
+  const civBadge = (c) => {
+    const civs = (c.civilization || '').split(/[\/／・]/).map(s=>s.trim()).filter(Boolean);
+    return civs.map(cv => `<span class="${civClassOf(cv)}" style="padding:3px 10px;border-radius:12px;font-size:0.8rem;margin-right:4px;">${cv}</span>`).join('');
+  };
+
+  const effectsHtml = (card.effects || []).map(e => `<div style="padding:10px;background:var(--bg-card);border-left:4px solid var(--accent-water);border-radius:6px;margin-bottom:6px;line-height:1.7;">${esc(e)}</div>`).join('');
+
+  overlay.innerHTML = `
+    <div style="background:var(--bg-primary);border:2px solid var(--border-color);border-radius:14px;padding:20px;max-width:500px;width:100%;max-height:90vh;overflow-y:auto;">
+      <div style="display:flex;gap:10px;margin-bottom:12px;">
+        ${card.imageUrl ? `<img src="${card.imageUrl}" style="width:100px;border-radius:6px;" onerror="this.style.display='none'">` : ''}
+        <div style="flex:1;">
+          <div style="font-size:1.2rem;font-weight:bold;margin-bottom:6px;">${esc(card.name)}</div>
+          <div style="margin-bottom:6px;">${civBadge(card)}</div>
+          <div style="font-size:0.85rem;color:var(--text-secondary);">
+            ${card.cardType || ''} / コスト${card.cost || '-'} ${card.power ? '/ パワー' + card.power : ''}
+          </div>
+        </div>
+      </div>
+      ${effectsHtml || '<div style="color:var(--text-secondary);font-size:0.85rem;">効果なし</div>'}
+      <button onclick="this.parentElement.parentElement.remove()" style="margin-top:12px;width:100%;padding:10px;background:var(--accent-water);border:none;color:white;border-radius:6px;cursor:pointer;">閉じる</button>
+    </div>
+  `;
+  document.body.appendChild(overlay);
 }
 
 function renderPlayerArea(who, isMe) {
@@ -1511,6 +1633,7 @@ function renderBattleCard(c, who) {
       ${c.keywords.blocker ? '<div class="bc-kw">🛡</div>' : ''}
       ${c.keywords.speedAttacker ? '<div class="bc-kw">⚡</div>' : ''}
       ${c.keywords.breaker > 1 ? `<div class="bc-breaker">${c.keywords.breaker === 99 ? 'W!' : c.keywords.breaker}</div>` : ''}
+      <div class="bc-info" onclick="event.stopPropagation();showCardEffectPopup('${c.instanceId}')" title="効果を見る">ℹ</div>
     </div>
   `;
 }
@@ -1526,6 +1649,7 @@ function renderHandCard(c, i) {
   return `
     <div class="hand-card ${civClass}">
       <div class="hc-cost">${c.cost}</div>
+      <div class="bc-info" style="top:2px;right:2px;" onclick="event.stopPropagation();showCardEffectPopup('${c.instanceId}')" title="効果を見る">ℹ</div>
       <div class="hc-name">${c.name}</div>
       <div class="hc-power">${c.power || (isSpell ? '呪文' : '')}</div>
       <div class="hc-actions">

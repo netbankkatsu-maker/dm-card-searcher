@@ -434,10 +434,29 @@ function editDeck(deckId) {
 }
 
 function deleteDeck(deckId) {
-  if (!confirm('このデッキを削除しますか？')) return;
-  const decks = getDecks().filter(d => d.id !== deckId);
-  saveDecks(decks);
-  showMyDecks();
+  const decks = getDecks();
+  const deck = decks.find(d => d.id === deckId);
+  if (!deck) return;
+  const overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.8);z-index:500;display:flex;justify-content:center;align-items:center;padding:16px;';
+  overlay.innerHTML = `
+    <div style="background:var(--bg-card);border:2px solid var(--border-color);border-radius:14px;padding:24px;max-width:360px;width:100%;text-align:center;">
+      <div style="font-size:1.4rem;margin-bottom:8px;">🗑</div>
+      <div style="font-weight:bold;margin-bottom:6px;">${deck.name}</div>
+      <div style="color:var(--text-secondary);font-size:0.85rem;margin-bottom:20px;">このデッキを削除しますか？</div>
+      <div style="display:flex;gap:10px;">
+        <button id="delCancel" style="flex:1;padding:10px;background:var(--bg-hover);border:1px solid var(--border-color);color:var(--text-primary);border-radius:8px;cursor:pointer;">キャンセル</button>
+        <button id="delConfirm" style="flex:1;padding:10px;background:#cc2222;border:none;color:white;border-radius:8px;cursor:pointer;font-weight:bold;">削除する</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+  overlay.querySelector('#delCancel').onclick = () => overlay.remove();
+  overlay.querySelector('#delConfirm').onclick = () => {
+    overlay.remove();
+    const updated = getDecks().filter(d => d.id !== deckId);
+    saveDecks(updated);
+    showMyDecks();
+  };
 }
 
 // ============================================================
@@ -612,10 +631,14 @@ function startTurn() {
   }
 
   game.phase = 'main';
+  showTurnBanner(
+    game.turn === 'player' ? '🟢 あなたのターン' : '🔴 AIのターン',
+    game.turn === 'player' ? '#44ee44' : '#ff5555'
+  );
   renderDuelUI();
 
   if (game.turn === 'ai') {
-    setTimeout(() => aiTakeTurn(), 800);
+    setTimeout(() => aiTakeTurn(), 1300);
   }
 }
 
@@ -630,6 +653,10 @@ function drawCard(who) {
   }
   const card = p.deck.shift();
   p.hand.push(card);
+  if (who === 'player') {
+    markAnim('draw-' + card.instanceId, 'anim-card-draw');
+    showFloatText('ドロー！', '#4488ff');
+  }
   addLog(`${who === 'player' ? 'あなた' : 'AI'}がカードをドロー`);
   return card;
 }
@@ -709,6 +736,8 @@ async function summonCreature(who, handIdx) {
     _jirasicActive: card.keywords?.jirasic, // ジャストダイバー有効フラグ
   };
   p.battleZone.push(instance);
+  markAnim('summon-' + instance.instanceId, 'anim-card-summon');
+  if (who === 'player') showFloatText('召喚！', '#44cc44');
   addLog(`${who === 'player' ? 'あなた' : 'AI'}が${card.name}を召喚`);
   renderDuelUI();
 
@@ -1196,6 +1225,9 @@ function attackPlayer() {
 
 function executeAttack(attackerOwner, attacker, targetType, targetIdx) {
   const defenderOwner = attackerOwner === 'player' ? 'ai' : 'player';
+  // 攻撃アニメーション
+  markAnim('attack-' + attacker.instanceId, 'anim-card-attack');
+  renderDuelUI();
   attacker.tapped = true;
   addLog(`${attacker.name}が攻撃`);
 
@@ -1225,6 +1257,7 @@ function executeAttack(attackerOwner, attacker, targetType, targetIdx) {
   } else if (targetType === 'direct') {
     game.winner = attackerOwner;
     addLog(`🎉 ${attackerOwner === 'player' ? 'あなた' : 'AI'}の勝利！`);
+    showFloatText(attackerOwner === 'player' ? '🎉 勝利！' : '😔 敗北...', attackerOwner === 'player' ? '#ffcc00' : '#ff4444');
   }
 
   game.selectedAttacker = null;
@@ -1308,10 +1341,15 @@ function destroyCreature(who, creature) {
   const p = game[who];
   const idx = p.battleZone.findIndex(c => c.instanceId === creature.instanceId);
   if (idx >= 0) {
+    // 位置取得してアニメーション
+    const el = document.querySelector(`[data-iid="${creature.instanceId}"]`);
+    if (el) {
+      const r = el.getBoundingClientRect();
+      showDestroyAnim(r.left + r.width / 2, r.top + r.height / 2);
+    }
     p.battleZone.splice(idx, 1);
     p.graveyard.push(creature);
     addLog(`${creature.name}が破壊された`);
-    // pig効果（非同期、ゲーム進行は待たない）
     triggerEffect(creature, 'pig', who).catch(() => {});
   }
 }
@@ -1320,17 +1358,26 @@ function breakShields(who, attacker) {
   const p = game[who];
   let count = getBreakCount(attacker);
   if (count === 99 || count > p.shields.length) count = p.shields.length;
+
+  // シールドアニメーション
+  const shieldEls = document.querySelectorAll(`.player-area.${who === 'player' ? 'me' : 'opponent'} .shield-card`);
+  for (let k = 0; k < Math.min(count, shieldEls.length); k++) {
+    const r = shieldEls[k].getBoundingClientRect();
+    setTimeout(() => showShieldBreakAnim(r.left + r.width / 2, r.top + r.height / 2), k * 150);
+  }
+
   const broken = p.shields.splice(0, count);
   addLog(`シールドを${broken.length}枚ブレイク`);
-  // S・トリガー処理
-  const triggers = broken.filter(s => s.keywords?.shieldTrigger);
+  showFloatText(`⚡ ${broken.length}ブレイク！`, '#ffcc00');
+
   for (const s of broken) {
     s.faceDown = false;
-  }
-  // 手札に加える（S・トリガーの使用選択は簡易的に、今回は無料で使用しない）
-  for (const s of broken) {
     p.hand.push(s);
-    // TODO: S・トリガー使用の確認UI（現時点では手札に加えるのみ）
+  }
+
+  const triggers = broken.filter(s => s.keywords?.shieldTrigger);
+  if (triggers.length > 0) {
+    setTimeout(() => showFloatText('🔔 S・トリガー！', '#ff9900'), 400);
   }
 }
 
@@ -1523,6 +1570,49 @@ function decideAiAttack(attacker) {
 
 function wait(ms) { return new Promise(r => setTimeout(r, ms)); }
 
+// ===== アニメーション =====
+const recentAnims = {};
+function markAnim(key, cls) {
+  recentAnims[key] = { cls, ts: Date.now() };
+  setTimeout(() => { delete recentAnims[key]; }, 700);
+}
+function getAnimClass(key) {
+  const a = recentAnims[key];
+  return (a && Date.now() - a.ts < 600) ? a.cls : '';
+}
+function showFloatText(text, color = '#ffffff') {
+  const el = document.createElement('div');
+  el.className = 'float-text';
+  el.style.color = color;
+  el.textContent = text;
+  document.body.appendChild(el);
+  setTimeout(() => el.remove(), 900);
+}
+function showTurnBanner(text, color = '#ffcc00') {
+  const old = document.querySelector('.turn-banner');
+  if (old) old.remove();
+  const el = document.createElement('div');
+  el.className = 'turn-banner';
+  el.style.color = color;
+  el.textContent = text;
+  document.body.appendChild(el);
+  setTimeout(() => el.remove(), 1300);
+}
+function showDestroyAnim(x, y) {
+  const el = document.createElement('div');
+  el.style.cssText = `position:fixed;z-index:1000;left:${x}px;top:${y}px;transform:translate(-50%,-50%);width:64px;height:90px;border-radius:6px;animation:cardDestroy 0.45s ease-out forwards;pointer-events:none;background:rgba(255,68,68,0.25);border:2px solid #ff4444;display:flex;align-items:center;justify-content:center;font-size:1.6rem;`;
+  el.textContent = '💥';
+  document.body.appendChild(el);
+  setTimeout(() => el.remove(), 500);
+}
+function showShieldBreakAnim(x, y) {
+  const el = document.createElement('div');
+  el.style.cssText = `position:fixed;z-index:1000;left:${x}px;top:${y}px;transform:translate(-50%,-50%);width:44px;height:62px;border-radius:5px;animation:shieldBreak 0.55s ease-out forwards;pointer-events:none;background:rgba(255,204,0,0.4);border:2px solid gold;display:flex;align-items:center;justify-content:center;font-size:1.4rem;`;
+  el.textContent = '🛡';
+  document.body.appendChild(el);
+  setTimeout(() => el.remove(), 650);
+}
+
 // ========== UI描画 ==========
 function renderDuelUI() {
   const area = document.getElementById('resultsArea');
@@ -1534,10 +1624,10 @@ function renderDuelUI() {
       ${renderPlayerArea('ai', false)}
       <div class="duel-center">
         ${game.winner ? `<div class="duel-winner">${game.winner === 'player' ? '🎉 勝利！' : '😔 敗北...'}</div>` : ''}
-        ${game.winner ? `<button onclick="showMyDecks()" style="padding:10px 20px;background:var(--accent-water);border:none;color:white;border-radius:8px;cursor:pointer;font-size:1rem;">デッキ一覧に戻る</button>` : ''}
+        ${game.winner ? `<button onclick="showMyDecks()" style="padding:8px 18px;background:var(--accent-water);border:none;color:white;border-radius:8px;cursor:pointer;font-size:0.95rem;">デッキ一覧へ</button>` : ''}
         ${!game.winner && isPlayerTurn ? `<button class="duel-end-btn" onclick="endTurn()">ターン終了</button>` : ''}
-        <div class="duel-turn-indicator">${isPlayerTurn ? '🟢 あなたのターン' : '🔴 AIのターン'} (T${game.turnNumber})</div>
-        <div class="duel-log">${game.log.slice(-4).map(l => `<div>${l}</div>`).join('')}</div>
+        <div class="duel-turn-indicator">${isPlayerTurn ? '🟢 自分' : '🔴 AI'} T${game.turnNumber}</div>
+        <div class="duel-log">${game.log.slice(-5).map(l => `<div>${l}</div>`).join('')}</div>
       </div>
       ${renderPlayerArea('player', true)}
     </div>
@@ -1589,51 +1679,83 @@ function showCardEffectPopup(instanceId, ownerKey) {
 
 function renderPlayerArea(who, isMe) {
   const p = game[who];
-  const label = isMe ? 'あなた' : 'AI';
+  const label = isMe ? '🟢 あなた' : '🔴 AI';
   const bz = p.battleZone.map(c => renderBattleCard(c, who)).join('');
-  const shields = p.shields.map((s, i) => `<div class="shield-card" onclick="${isMe ? 'javascript:void(0)' : `attackShield(${i})`}">🛡</div>`).join('');
+
+  const shields = p.shields.map((s, i) => {
+    const canTarget = !isMe && !!game.selectedAttacker && !game.winner;
+    return `<div class="shield-card card-back-design ${canTarget ? 'target-shield' : ''}"
+      onclick="${canTarget ? `attackShield(${i})` : 'javascript:void(0)'}"></div>`;
+  }).join('');
+
   const mana = p.mana.map(m => {
     const c = (m.civilization || '').split(/[\/／・]/)[0].trim();
-    const civClass = civClassOf(c);
-    return `<div class="mana-card ${m.tapped ? 'tapped' : ''} ${civClass}">${c || '?'}</div>`;
+    return `<div class="mana-card ${civClassOf(c)} ${m.tapped ? 'tapped' : ''}" title="${m.name || ''}">
+      <span style="font-size:0.55rem;">${c.charAt(0) || '?'}</span>
+    </div>`;
   }).join('');
 
   const handHtml = isMe
     ? p.hand.map((c, i) => renderHandCard(c, i)).join('')
-    : p.hand.map(() => '<div class="hand-card-back">🂠</div>').join('');
+    : p.hand.map(() => `<div class="hand-card-back card-back-design"></div>`).join('');
+
+  const canDirect = isMe && !game.winner && game.turn === 'player'
+    && game.ai.shields.length === 0
+    && !!game.selectedAttacker
+    && (() => { const a = game.player.battleZone.find(c => c.instanceId === game.selectedAttacker); return a && !a.keywords?.cannotAttackPlayer; })();
 
   return `
     <div class="player-area ${isMe ? 'me' : 'opponent'}">
-      <div class="player-info">
-        <span>${label}</span>
-        <span>山札: ${p.deck.length}</span>
-        <span>手札: ${p.hand.length}</span>
-        <span>墓地: ${p.graveyard.length}</span>
+      <div class="player-info-bar">
+        <span class="player-name">${label}</span>
+        <span class="info-chip">山 ${p.deck.length}</span>
+        <span class="info-chip">手 ${p.hand.length}</span>
+        <span class="info-chip">墓 ${p.graveyard.length}</span>
+        ${canDirect ? `<button onclick="attackPlayer()" style="margin-left:auto;padding:2px 10px;background:#ff3333;border:none;color:white;border-radius:4px;cursor:pointer;font-size:0.72rem;font-weight:bold;">⚡ダイレクト</button>` : ''}
       </div>
-      <div class="zone shield-zone">${shields || '<div style="color:var(--text-secondary);font-size:0.8rem;">シールドなし</div>'}</div>
-      <div class="zone battle-zone" ${game.selectedAttacker && !isMe ? 'data-targetable="true"' : ''}>${bz || '<div style="color:var(--text-secondary);font-size:0.75rem;padding:10px;">バトルゾーン</div>'}</div>
-      <div class="zone mana-zone">${mana || '<div style="color:var(--text-secondary);font-size:0.75rem;">マナゾーン</div>'}</div>
-      <div class="zone hand-zone">${handHtml || '<div style="color:var(--text-secondary);font-size:0.75rem;">手札</div>'}</div>
+      <div class="zone shield-zone">${shields || '<div style="color:rgba(255,255,255,0.25);font-size:0.72rem;padding:8px;">シールドなし</div>'}</div>
+      <div class="zone battle-zone" ${game.selectedAttacker && !isMe ? 'data-targetable="true"' : ''}>
+        ${bz || '<div style="color:rgba(255,255,255,0.18);font-size:0.7rem;padding:10px;">バトルゾーン</div>'}
+      </div>
+      <div class="zone mana-zone">${mana || '<div style="color:rgba(255,255,255,0.18);font-size:0.7rem;padding:8px;">マナ 0</div>'}</div>
+      <div class="zone hand-zone">${handHtml || '<div style="color:rgba(255,255,255,0.18);font-size:0.7rem;">手札なし</div>'}</div>
     </div>
   `;
 }
 
 function renderBattleCard(c, who) {
   const selected = game.selectedAttacker === c.instanceId;
-  const clickable = who === 'player'
-    ? canAttack('player', c) && game.turn === 'player'
-    : game.selectedAttacker !== null;
-  const onclick = who === 'player' ? `selectAttacker('${c.instanceId}')` : (game.selectedAttacker ? `attackCreature('${c.instanceId}')` : '');
+  const isAttackable = who === 'player' && canAttack('player', c) && game.turn === 'player' && !game.winner;
+  const isTargetable = who !== 'player' && !!game.selectedAttacker && !game.winner;
   const civ = (c.civilization || '').split(/[\/／・]/)[0].trim();
-  const civClass = civClassOf(civ);
+  const civCls = civClassOf(civ);
+  const isTwinPact = (c.name || '').includes('/');
+  const animCls = getAnimClass('summon-' + c.instanceId) || getAnimClass('attack-' + c.instanceId);
+  const breakerLabel = c.keywords.breaker === 99 ? 'WD' : c.keywords.breaker > 1 ? `${c.keywords.breaker}BR` : '';
+
+  let onCardClick;
+  if (who === 'player') {
+    onCardClick = isAttackable ? `selectAttacker('${c.instanceId}')` : `showCardEffectPopup('${c.instanceId}')`;
+  } else {
+    onCardClick = isTargetable ? `attackCreature('${c.instanceId}')` : `showCardEffectPopup('${c.instanceId}')`;
+  }
+
   return `
-    <div class="battle-card ${civClass} ${c.tapped ? 'tapped' : ''} ${c.summoningSickness && !c.keywords.speedAttacker ? 'sick' : ''} ${selected ? 'selected' : ''} ${clickable ? 'clickable' : ''}" ${onclick ? `onclick="${onclick}"` : ''}>
-      <div class="bc-name">${c.name}</div>
-      <div class="bc-power">${c.power}</div>
-      ${c.keywords.blocker ? '<div class="bc-kw">🛡</div>' : ''}
-      ${c.keywords.speedAttacker ? '<div class="bc-kw">⚡</div>' : ''}
-      ${c.keywords.breaker > 1 ? `<div class="bc-breaker">${c.keywords.breaker === 99 ? 'W!' : c.keywords.breaker}</div>` : ''}
-      <div class="bc-info" onclick="event.stopPropagation();showCardEffectPopup('${c.instanceId}')" title="効果を見る">ℹ</div>
+    <div class="battle-card ${civCls} ${c.tapped ? 'tapped' : ''} ${c.summoningSickness && !c.keywords?.speedAttacker ? 'sick' : ''} ${selected ? 'selected' : ''} ${isTwinPact ? 'twin-pact' : ''} ${animCls}"
+         data-iid="${c.instanceId}" onclick="${onCardClick}" title="${c.name}">
+      ${c.imageUrl
+        ? `<img src="${c.imageUrl}" loading="lazy" onerror="this.style.display='none'">`
+        : `<div style="width:100%;height:100%;background:#222;display:flex;align-items:center;justify-content:center;color:#555;font-size:0.55rem;">No img</div>`}
+      ${isTwinPact ? `<div class="twin-pact-badge">TP</div>` : ''}
+      <div class="bc-overlay">
+        <div class="bc-name">${c.name}</div>
+        <div class="bc-power">${c.power > 0 ? c.power.toLocaleString() : (c.cardType === '呪文' ? '呪文' : '-')}</div>
+      </div>
+      <div class="bc-badges">
+        ${c.keywords.speedAttacker ? `<div class="bc-badge" style="background:rgba(200,100,0,0.9);">⚡SA</div>` : ''}
+        ${c.keywords.blocker ? `<div class="bc-badge" style="background:rgba(30,80,180,0.9);">🛡BL</div>` : ''}
+        ${breakerLabel ? `<div class="bc-badge" style="background:rgba(180,40,40,0.9);">${breakerLabel}</div>` : ''}
+      </div>
     </div>
   `;
 }
@@ -1644,17 +1766,27 @@ function renderHandCard(c, i) {
   const canPlay = game.turn === 'player' && !game.winner && (isCreature || isSpell) && canPaySummonCost('player', c);
   const canCharge = game.turn === 'player' && !game.hasCharged && !game.winner;
   const civ = (c.civilization || '').split(/[\/／・]/)[0].trim();
-  const civClass = civClassOf(civ);
+  const isTwinPact = (c.name || '').includes('/');
+  const animCls = getAnimClass('draw-' + c.instanceId);
   const playLabel = isCreature ? '召喚' : (isSpell ? '唱える' : '使用');
+  const badgeColors = { '火':'#bb3322','水':'#2244bb','自然':'#228833','光':'#bbaa00','闇':'#661188' };
+  const badgeColor = badgeColors[civ] || '#555';
+  const badgeText = civ === '光' ? '#000' : '#fff';
+
   return `
-    <div class="hand-card ${civClass}">
-      <div class="hc-cost">${c.cost}</div>
-      <div class="bc-info" style="top:2px;right:2px;" onclick="event.stopPropagation();showCardEffectPopup('${c.instanceId}')" title="効果を見る">ℹ</div>
-      <div class="hc-name">${c.name}</div>
-      <div class="hc-power">${c.power || (isSpell ? '呪文' : '')}</div>
+    <div class="hand-card ${canPlay ? 'can-play' : ''} ${isTwinPact ? 'twin-pact' : ''} ${animCls}"
+         onclick="showCardEffectPopup('${c.instanceId}')" title="${c.name}（タップで効果確認）">
+      <div class="hand-card-inner">
+        ${c.imageUrl
+          ? `<img src="${c.imageUrl}" loading="lazy" onerror="this.style.display='none'">`
+          : `<div style="width:100%;height:100%;background:#1a1a2a;display:flex;align-items:center;justify-content:center;color:#444;font-size:0.55rem;">No img</div>`}
+        ${isTwinPact ? `<div class="twin-pact-badge">TP</div>` : ''}
+        <div class="hc-overlay"><div class="hc-name">${c.name}</div></div>
+        <div class="hc-cost-badge" style="background:${badgeColor};color:${badgeText};">${c.cost}</div>
+      </div>
       <div class="hc-actions">
-        ${canPlay ? `<button onclick="playerSummon(${i})">${playLabel}</button>` : ''}
-        ${canCharge ? `<button onclick="playerChargeMana(${i})">マナ</button>` : ''}
+        ${canPlay ? `<button onclick="event.stopPropagation();playerSummon(${i})" style="background:#228833;">${playLabel}</button>` : ''}
+        ${canCharge ? `<button onclick="event.stopPropagation();playerChargeMana(${i})" style="background:#2244bb;">マナ</button>` : ''}
       </div>
     </div>
   `;

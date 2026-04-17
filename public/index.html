@@ -65,13 +65,16 @@
       background: var(--bg-hover);
       border: 1px solid var(--border-color);
       color: var(--text-secondary);
-      padding: 6px 10px;
-      border-radius: 6px;
+      padding: 0;
+      border-radius: 8px;
       cursor: pointer;
-      font-size: 0.85rem;
+      font-size: 1.15rem;
       transition: all 0.2s;
+      width: 38px; height: 38px;
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
     }
-    .header-btn:hover { background: var(--border-color); color: var(--text-primary); }
+    .header-btn:hover { background: var(--border-color); color: var(--text-primary); transform: scale(1.1); }
     .header-btn.active { background: var(--accent-water); color: white; border-color: var(--accent-water); }
 
     /* 検索エリア */
@@ -520,153 +523,147 @@
       font-size: 0.8rem;
     }
 
-    /* ============ デュエル画面 ============ */
+    /* ============ デュエル画面 (DM Play風) ============ */
     .duel-field {
-      display: flex;
-      flex-direction: column;
-      height: 100%;
-      gap: 4px;
-      background: linear-gradient(180deg, #1a0a2a 0%, #0a1a2a 50%, #2a1a0a 100%);
-      padding: 4px;
-      border-radius: 8px;
+      display: flex; flex-direction: column; height: 100%;
+      background: radial-gradient(ellipse at 50% 30%, #193a1e 0%, #0c1f10 50%, #060c06 100%);
+      overflow: hidden; padding: 0; gap: 0;
     }
-    .player-area {
-      background: rgba(0,0,0,0.3);
-      border: 1px solid var(--border-color);
-      border-radius: 8px;
-      padding: 6px;
-      display: flex;
-      flex-direction: column;
-      gap: 4px;
+    .player-area { display: flex; flex-direction: column; border: none; padding: 0; }
+    .player-info-bar {
+      display: flex; align-items: center; gap: 6px;
+      padding: 3px 8px; background: rgba(0,0,0,0.55);
+      font-size: 0.65rem; color: var(--text-secondary);
+      border-bottom: 1px solid rgba(255,255,255,0.04);
     }
-    .player-area.opponent { border-color: var(--accent-fire); }
-    .player-area.me { border-color: var(--accent-water); }
-    .player-info { display: flex; gap: 10px; font-size: 0.75rem; color: var(--text-secondary); padding: 2px 6px; }
-    .player-info span:first-child { font-weight: bold; color: var(--text-primary); }
+    .player-name { font-weight: bold; font-size: 0.75rem; color: var(--text-primary); }
+    .info-chip { background: rgba(255,255,255,0.07); padding: 1px 5px; border-radius: 4px; font-size: 0.6rem; }
     .zone {
-      display: flex;
-      gap: 4px;
-      padding: 4px;
-      background: rgba(255,255,255,0.03);
-      border-radius: 6px;
-      min-height: 40px;
-      overflow-x: auto;
-      flex-wrap: wrap;
+      display: flex; align-items: center; padding: 4px 8px;
+      gap: 5px; overflow-x: auto; -webkit-overflow-scrolling: touch;
+      min-height: 44px; flex-wrap: nowrap;
     }
-    .shield-zone { border-left: 3px solid #ffcc00; }
-    .battle-zone { border-left: 3px solid #ff4444; min-height: 70px; }
-    .mana-zone { border-left: 3px solid #44cc44; min-height: 36px; }
-    .hand-zone { border-left: 3px solid #4488ff; min-height: 50px; }
-    .shield-card {
-      width: 30px; height: 42px;
-      background: linear-gradient(135deg, #ffcc00, #ff9900);
-      border-radius: 4px;
-      display: flex; align-items: center; justify-content: center;
-      color: #000;
-      font-size: 1rem;
-      cursor: pointer;
-      transition: all 0.2s;
-      box-shadow: 0 2px 4px rgba(0,0,0,0.5);
-    }
-    .shield-card:hover { transform: translateY(-2px); box-shadow: 0 4px 8px rgba(0,0,0,0.7); }
-    .mana-card {
-      width: 26px; height: 36px;
-      border-radius: 3px;
-      display: flex; align-items: center; justify-content: center;
-      font-size: 0.75rem;
-      font-weight: bold;
-      color: white;
-      transition: transform 0.2s;
-    }
-    .mana-card.tapped { transform: rotate(90deg); opacity: 0.6; }
-    .battle-card {
-      width: 70px; min-height: 70px;
-      background: var(--bg-card);
-      border: 2px solid var(--border-color);
-      border-radius: 6px;
-      padding: 4px;
-      display: flex; flex-direction: column; justify-content: space-between;
-      font-size: 0.7rem;
-      position: relative;
-      transition: all 0.2s;
-      cursor: default;
-    }
-    .battle-card.clickable { cursor: pointer; }
-    .battle-card.clickable:hover { transform: translateY(-3px); box-shadow: 0 4px 12px rgba(68,136,255,0.5); }
-    .battle-card.tapped { transform: rotate(90deg); }
-    .battle-card.sick { opacity: 0.7; filter: saturate(0.5); }
-    .battle-card.selected { border-color: var(--accent-fire); box-shadow: 0 0 12px var(--accent-fire); }
-    .battle-zone[data-targetable="true"] .battle-card.tapped { border-color: var(--accent-fire); box-shadow: 0 0 8px var(--accent-fire); cursor: pointer; }
-    .bc-name { font-size: 0.65rem; line-height: 1.1; overflow: hidden; max-height: 2.2em; }
-    .bc-power { font-size: 0.9rem; font-weight: bold; color: var(--accent-light); }
-    .bc-kw { position: absolute; top: 2px; right: 2px; font-size: 0.7rem; }
-    .bc-breaker { position: absolute; bottom: 2px; right: 2px; background: var(--accent-fire); color: white; padding: 1px 4px; border-radius: 8px; font-size: 0.65rem; font-weight: bold; }
-    .bc-info { position: absolute; bottom: 2px; left: 2px; background: rgba(68,136,255,0.8); color: white; width: 16px; height: 16px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 0.7rem; cursor: pointer; z-index: 2; }
-    .bc-info:hover { background: var(--accent-water); }
-    .hand-card {
-      width: 85px; min-height: 85px;
-      background: var(--bg-card);
-      border: 1px solid var(--border-color);
-      border-radius: 6px;
-      padding: 4px;
-      display: flex; flex-direction: column;
-      font-size: 0.7rem;
-      position: relative;
-    }
-    .hc-cost { position: absolute; top: 2px; left: 2px; background: var(--accent-water); color: white; border-radius: 50%; width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; font-size: 0.8rem; font-weight: bold; }
-    .hc-name { font-size: 0.65rem; line-height: 1.1; margin-top: 18px; flex: 1; overflow: hidden; max-height: 2.2em; word-break: break-all; }
-    .hc-power { font-size: 0.75rem; font-weight: bold; color: var(--accent-light); text-align: right; }
-    .hc-actions { display: flex; gap: 2px; margin-top: 2px; }
-    .hc-actions button { flex: 1; padding: 3px 4px; font-size: 0.65rem; border: none; border-radius: 3px; background: var(--accent-water); color: white; cursor: pointer; }
-    .hc-actions button:last-child { background: var(--accent-nature); }
-    .hand-card-back {
-      width: 40px; height: 56px;
-      background: linear-gradient(135deg, #4488ff, #2266dd);
-      border-radius: 4px;
-      display: flex; align-items: center; justify-content: center;
-      color: white;
-    }
-    .duel-center {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 6px 12px;
-      background: rgba(0,0,0,0.5);
-      border-radius: 6px;
-      gap: 10px;
-      flex-wrap: wrap;
-    }
-    .duel-turn-indicator { font-weight: bold; font-size: 0.9rem; }
-    .duel-end-btn { padding: 8px 16px; background: var(--accent-fire); border: none; color: white; border-radius: 6px; cursor: pointer; font-weight: bold; }
-    .duel-log { flex: 1; min-width: 150px; font-size: 0.7rem; color: var(--text-secondary); max-height: 50px; overflow-y: auto; }
-    .duel-winner { font-size: 1.5rem; font-weight: bold; color: var(--accent-light); text-align: center; padding: 10px; background: rgba(0,0,0,0.7); border-radius: 8px; width: 100%; }
+    .shield-zone { background: rgba(255,204,0,0.04); border-bottom: 1px solid rgba(255,204,0,0.15); min-height: 58px; }
+    .battle-zone { background: rgba(255,68,68,0.04); border-top: 1px solid rgba(255,68,68,0.12); border-bottom: 1px solid rgba(255,68,68,0.12); min-height: 96px; flex: 1; }
+    .mana-zone { background: rgba(68,204,68,0.04); border-top: 1px solid rgba(68,204,68,0.12); border-bottom: 1px solid rgba(68,204,68,0.12); min-height: 46px; }
+    .hand-zone { background: rgba(68,136,255,0.06); border-top: 1px solid rgba(68,136,255,0.18); min-height: 106px; padding: 5px 8px; overflow-x: auto; -webkit-overflow-scrolling: touch; }
 
-    .civ-fire { background: #ff4444; color: white; }
-    .civ-water { background: #4488ff; color: white; }
-    .civ-nature { background: #44cc44; color: white; }
-    .civ-light { background: #ffcc00; color: #000; }
-    .civ-darkness { background: #9944cc; color: white; }
-    .civ-zero { background: #888; color: white; }
-    .battle-card.civ-fire { border-color: #ff4444; }
-    .battle-card.civ-water { border-color: #4488ff; }
-    .battle-card.civ-nature { border-color: #44cc44; }
-    .battle-card.civ-light { border-color: #ffcc00; }
-    .battle-card.civ-darkness { border-color: #9944cc; }
-    .hand-card.civ-fire .hc-cost { background: #ff4444; }
-    .hand-card.civ-water .hc-cost { background: #4488ff; }
-    .hand-card.civ-nature .hc-cost { background: #44cc44; }
-    .hand-card.civ-light .hc-cost { background: #ffcc00; color: #000; }
-    .hand-card.civ-darkness .hc-cost { background: #9944cc; }
+    /* カード裏面 */
+    .card-back-design {
+      background:
+        repeating-linear-gradient(45deg,transparent,transparent 4px,rgba(255,255,255,0.03) 4px,rgba(255,255,255,0.03) 8px),
+        repeating-linear-gradient(-45deg,transparent,transparent 4px,rgba(255,255,255,0.02) 4px,rgba(255,255,255,0.02) 8px),
+        linear-gradient(160deg,#0d3070 0%,#0a1f5e 50%,#0d3070 100%);
+      border: 2px solid #2a5aaa;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.7),inset 0 0 12px rgba(0,20,80,0.5);
+      position: relative; overflow: hidden;
+    }
+    .card-back-design::before { content:''; position:absolute; top:8%;left:8%;right:8%;bottom:8%; border:1px solid rgba(80,130,220,0.35); border-radius:3px; }
+    .card-back-design::after { content:'✦'; position:absolute; top:50%;left:50%; transform:translate(-50%,-50%); color:rgba(80,150,255,0.5); font-size:1rem; pointer-events:none; }
+
+    /* シールドカード */
+    .shield-card { width:42px; height:60px; border-radius:5px; cursor:default; transition:all 0.2s; flex-shrink:0; position:relative; }
+    .shield-card.target-shield { cursor:pointer; animation:shieldTarget 0.7s infinite alternate; }
+    @keyframes shieldTarget {
+      from { transform:translateY(0); box-shadow:0 0 8px rgba(255,68,68,0.5); border-color:#ff4444; }
+      to   { transform:translateY(-5px); box-shadow:0 0 22px rgba(255,68,68,1); border-color:#ff8888; }
+    }
+
+    /* バトルカード */
+    .battle-card {
+      width:68px; height:95px; border-radius:6px; position:relative;
+      cursor:pointer; transition:transform 0.2s,box-shadow 0.2s; flex-shrink:0;
+      overflow:hidden; border:2px solid rgba(255,255,255,0.1);
+      box-shadow:0 3px 8px rgba(0,0,0,0.7); background:#111;
+    }
+    .battle-card img { width:100%; height:100%; object-fit:cover; display:block; pointer-events:none; }
+    .bc-overlay { position:absolute; bottom:0;left:0;right:0; background:linear-gradient(transparent,rgba(0,0,0,0.92)); padding:18px 3px 3px; pointer-events:none; }
+    .bc-name { font-size:0.52rem; color:#fff; line-height:1.2; word-break:break-all; max-height:2.4em; overflow:hidden; }
+    .bc-power { font-size:0.78rem; font-weight:bold; color:#ffcc00; }
+    .bc-badges { position:absolute; top:2px;right:2px; display:flex; flex-direction:column; gap:1px; align-items:flex-end; pointer-events:none; }
+    .bc-badge { background:rgba(0,0,0,0.8); border-radius:3px; padding:1px 3px; font-size:0.55rem; color:white; line-height:1.3; font-weight:bold; }
+    .battle-card.tapped { transform:rotate(90deg); margin:12px -4px; }
+    .battle-card.sick { filter:grayscale(0.5) brightness(0.7); }
+    .battle-card.selected { border-color:#ff4444!important; box-shadow:0 0 18px rgba(255,68,68,0.9),0 3px 8px rgba(0,0,0,0.7); transform:translateY(-6px) scale(1.06); }
+    .battle-card:hover:not(.tapped):not(.selected) { transform:translateY(-4px); box-shadow:0 8px 20px rgba(0,0,0,0.8); }
+    .battle-card.tapped:hover { transform:rotate(90deg); }
+    .battle-card.civ-fire   { border-color:rgba(255,68,68,0.7); }
+    .battle-card.civ-water  { border-color:rgba(68,136,255,0.7); }
+    .battle-card.civ-nature { border-color:rgba(68,204,68,0.7); }
+    .battle-card.civ-light  { border-color:rgba(255,204,0,0.7); }
+    .battle-card.civ-darkness { border-color:rgba(153,68,204,0.7); }
+    .twin-pact-badge { position:absolute; top:2px;left:2px; background:linear-gradient(135deg,#ffcc00,#9944cc); color:white; font-size:0.5rem; font-weight:bold; padding:1px 4px; border-radius:3px; z-index:3; pointer-events:none; }
+    .battle-card.twin-pact { box-shadow:0 0 0 2px #ffcc00,0 0 0 4px #9944cc,0 3px 8px rgba(0,0,0,0.7); }
+    .battle-card.twin-pact.selected { box-shadow:0 0 0 2px #ffcc00,0 0 0 4px #9944cc,0 0 20px rgba(255,68,68,0.9); }
+
+    /* 手札カード（プレイヤー） */
+    .hand-card {
+      width:86px; height:120px; border-radius:7px; position:relative;
+      cursor:pointer; transition:transform 0.25s,box-shadow 0.25s; flex-shrink:0;
+      overflow:visible; border:2px solid rgba(255,255,255,0.15);
+      box-shadow:0 3px 10px rgba(0,0,0,0.7);
+    }
+    .hand-card-inner { width:100%; height:100%; border-radius:5px; overflow:hidden; position:relative; }
+    .hand-card-inner img { width:100%; height:100%; object-fit:cover; display:block; }
+    .hand-card-inner .hc-overlay { position:absolute; bottom:0;left:0;right:0; background:linear-gradient(transparent,rgba(0,0,0,0.95)); padding:18px 3px 3px; pointer-events:none; }
+    .hand-card-inner .hc-name { font-size:0.52rem; color:white; line-height:1.2; word-break:break-all; max-height:2.4em; overflow:hidden; }
+    .hc-cost-badge { position:absolute; top:3px;left:3px; width:20px;height:20px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:0.78rem; font-weight:bold; border:1.5px solid rgba(255,255,255,0.8); box-shadow:0 2px 4px rgba(0,0,0,0.6); z-index:3; pointer-events:none; }
+    .hand-card .hc-actions { position:absolute; bottom:-30px; left:0;right:0; display:flex; gap:2px; opacity:0; transition:opacity 0.15s; pointer-events:none; z-index:10; }
+    .hand-card:hover { transform:translateY(-12px); box-shadow:0 14px 28px rgba(0,0,0,0.9); z-index:20; }
+    .hand-card:hover .hc-actions { opacity:1; pointer-events:auto; }
+    .hand-card .hc-actions button { flex:1; padding:4px 2px; font-size:0.6rem; border:none; border-radius:4px; cursor:pointer; font-weight:bold; white-space:nowrap; color:white; }
+    .hand-card.can-play { border-color:rgba(68,204,68,0.85); box-shadow:0 0 14px rgba(68,204,68,0.45),0 3px 10px rgba(0,0,0,0.7); }
+    .hand-card.twin-pact { box-shadow:0 0 0 2px #ffcc00,0 0 0 4px #9944cc,0 3px 10px rgba(0,0,0,0.7); }
+
+    /* 相手手札 */
+    .hand-card-back { width:54px; height:76px; border-radius:5px; flex-shrink:0; transition:transform 0.2s; }
+
+    /* マナカード */
+    .mana-card { width:26px; height:36px; border-radius:3px; display:flex; align-items:center; justify-content:center; font-size:0.6rem; font-weight:bold; color:white; transition:transform 0.3s; flex-shrink:0; border:1px solid rgba(255,255,255,0.15); }
+    .mana-card.tapped { transform:rotate(90deg); margin:5px -4px; opacity:0.6; }
+
+    /* 文明カラー */
+    .civ-fire     { background:#bb3322; color:#fff; }
+    .civ-water    { background:#2244bb; color:#fff; }
+    .civ-nature   { background:#228833; color:#fff; }
+    .civ-light    { background:#bbaa00; color:#000; }
+    .civ-darkness { background:#661188; color:#fff; }
+    .civ-zero     { background:#555; color:#fff; }
+
+    /* センター */
+    .duel-center { display:flex; align-items:center; justify-content:space-between; padding:5px 10px; background:rgba(0,0,0,0.65); border-top:1px solid rgba(255,255,255,0.05); border-bottom:1px solid rgba(255,255,255,0.05); gap:8px; flex-wrap:wrap; position:relative; z-index:5; flex-shrink:0; }
+    .duel-turn-indicator { font-weight:bold; font-size:0.82rem; padding:4px 10px; border-radius:12px; background:rgba(0,0,0,0.4); }
+    .duel-end-btn { padding:7px 14px; background:linear-gradient(135deg,#cc2222,#991111); border:2px solid #ff5555; color:white; border-radius:8px; cursor:pointer; font-weight:bold; font-size:0.85rem; box-shadow:0 0 10px rgba(255,68,68,0.4); transition:all 0.2s; }
+    .duel-end-btn:hover { background:linear-gradient(135deg,#ff4444,#cc2222); box-shadow:0 0 20px rgba(255,68,68,0.7); }
+    .duel-log { flex:1; min-width:80px; font-size:0.65rem; color:var(--text-secondary); max-height:44px; overflow-y:auto; background:rgba(0,0,0,0.3); border-radius:4px; padding:2px 4px; }
+    .duel-log div:last-child { color:var(--text-primary); }
+    .duel-winner { font-size:2rem; font-weight:bold; text-align:center; padding:12px; width:100%; animation:winnerAppear 0.6s ease-out; }
+
+    /* アニメーション */
+    @keyframes cardDraw   { from{transform:translateY(-70px) scale(0.8);opacity:0} to{transform:translateY(0) scale(1);opacity:1} }
+    @keyframes cardSummon { 0%{transform:scale(0) rotate(-8deg);opacity:0;filter:brightness(3)} 60%{transform:scale(1.1) rotate(2deg);opacity:1;filter:brightness(1.5)} 100%{transform:scale(1) rotate(0);opacity:1;filter:brightness(1)} }
+    @keyframes cardAttack { 0%{transform:translateY(0) scale(1)} 35%{transform:translateY(-18px) scale(1.12);filter:brightness(2)} 65%{transform:translateY(-18px) scale(1.12);filter:brightness(2.5)} 100%{transform:translateY(0) scale(1);filter:brightness(1)} }
+    @keyframes cardDestroy{ 0%{transform:scale(1) rotate(0);opacity:1;filter:brightness(1)} 25%{transform:scale(1.3) rotate(-5deg);filter:brightness(3) saturate(0)} 100%{transform:scale(0) rotate(25deg);opacity:0} }
+    @keyframes shieldBreak{ 0%{transform:scale(1);filter:brightness(1)} 20%{transform:scale(1.5);filter:brightness(5)} 50%{transform:scale(0.7) rotate(-15deg);filter:brightness(2)} 80%{transform:scale(1.1) rotate(8deg);filter:brightness(1.5)} 100%{transform:scale(0);opacity:0} }
+    @keyframes floatUp    { 0%{transform:translate(-50%,-50%) scale(0.6);opacity:0} 25%{transform:translate(-50%,-70%) scale(1.2);opacity:1} 70%{transform:translate(-50%,-100%) scale(1);opacity:1} 100%{transform:translate(-50%,-130%) scale(0.8);opacity:0} }
+    @keyframes turnBanner { 0%{transform:translate(-50%,-50%) scaleX(0);opacity:0} 20%{transform:translate(-50%,-50%) scaleX(1.05);opacity:1} 70%{transform:translate(-50%,-50%) scaleX(1);opacity:1} 100%{transform:translate(-50%,-50%) scaleX(1.2);opacity:0} }
+    @keyframes winnerAppear { from{transform:scale(0.3);opacity:0} to{transform:scale(1);opacity:1} }
+    .anim-card-draw   { animation:cardDraw 0.4s ease-out; }
+    .anim-card-summon { animation:cardSummon 0.5s ease-out; }
+    .anim-card-attack { animation:cardAttack 0.5s ease-in-out; }
+
+    .float-text { position:fixed; pointer-events:none; z-index:1000; font-size:1.4rem; font-weight:bold; color:white; text-shadow:0 2px 10px rgba(0,0,0,0.9); animation:floatUp 0.85s ease-out forwards; left:50%; top:50%; }
+    .turn-banner { position:fixed; top:50%;left:50%; z-index:600; font-size:1.6rem; font-weight:bold; color:white; text-shadow:0 2px 16px rgba(0,0,0,0.9); padding:10px 36px; background:rgba(0,0,0,0.85); border:2px solid currentColor; border-radius:8px; animation:turnBanner 1.2s ease-out forwards; pointer-events:none; white-space:nowrap; }
 
     /* レスポンシブ */
     @media (max-width: 600px) {
-      .side-panel { position: fixed; top: 0; left: 0; height: 100%; z-index: 150; width: 260px; box-shadow: 4px 0 20px rgba(0,0,0,0.5); }
-      .side-panel.hidden { width: 0; box-shadow: none; }
-      .detail-header { flex-wrap: wrap; }
-      .detail-header-actions { width: 100%; justify-content: flex-end; }
-      .results-grid { grid-template-columns: repeat(auto-fill, minmax(90px, 1fr)); }
-      .battle-card { width: 60px; }
-      .hand-card { width: 70px; }
+      .side-panel { position:fixed; top:0;left:0; height:100%; z-index:150; width:260px; box-shadow:4px 0 20px rgba(0,0,0,0.5); }
+      .side-panel.hidden { width:0; box-shadow:none; }
+      .detail-header { flex-wrap:wrap; }
+      .detail-header-actions { width:100%; justify-content:flex-end; }
+      .results-grid { grid-template-columns:repeat(auto-fill,minmax(90px,1fr)); }
+      .battle-card { width:56px; height:78px; }
+      .hand-card { width:70px; height:98px; }
     }
   </style>
 </head>
@@ -676,12 +673,12 @@
   <div class="header">
     <h1>デュエマカード検索くん</h1>
     <div class="header-buttons">
-      <button class="header-btn" id="tabSearch" onclick="switchMainTab('search')" style="background:var(--accent-water);color:white;border-color:var(--accent-water)">&#128269; 検索</button>
-      <button class="header-btn" id="tabCamera" onclick="switchMainTab('camera')">&#128247; カメラ</button>
-      <button class="header-btn" id="tabDeck" onclick="switchMainTab('deck')">&#127183; 公式デッキ</button>
-      <button class="header-btn" id="tabBattle" onclick="switchMainTab('battle')">&#9876; 対戦</button>
-      <button class="header-btn" onclick="openSettings()" title="文字サイズ設定">&#9881;</button>
-      <button class="header-btn" onclick="document.getElementById('sidePanel').classList.toggle('hidden')" title="履歴">&#9776;</button>
+      <button class="header-btn" id="tabSearch" onclick="switchMainTab('search')" title="カード検索" style="background:var(--accent-water);color:white;border-color:var(--accent-water)">🔍</button>
+      <button class="header-btn" id="tabCamera" onclick="switchMainTab('camera')" title="カメラ認識">📷</button>
+      <button class="header-btn" id="tabDeck" onclick="switchMainTab('deck')" title="公式デッキ">🎴</button>
+      <button class="header-btn" id="tabBattle" onclick="switchMainTab('battle')" title="AI対戦">⚔️</button>
+      <button class="header-btn" onclick="openSettings()" title="文字サイズ設定">⚙️</button>
+      <button class="header-btn" onclick="document.getElementById('sidePanel').classList.toggle('hidden')" title="履歴">☰</button>
     </div>
   </div>
 
